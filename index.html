@@ -95,7 +95,7 @@ button:focus-visible, .filebtn:focus-within, input:focus-visible { outline: 2px 
 <div class="wrap">
   <header>
     <h1>Phantombass</h1>
-    <p class="lede">Lässt kleine Lautsprecher nach mehr Bass klingen. Song oder Video laden, abspielen, einschalten.</p>
+    <p class="lede">Mehr Bass auf kleinen Lautsprechern und frische Höhen für abgeschnittene MP3s. Song oder Video laden, abspielen, einschalten.</p>
   </header>
 
   <section class="card" aria-label="Player">
@@ -122,6 +122,7 @@ button:focus-visible, .filebtn:focus-within, input:focus-visible { outline: 2px 
   <section class="about">
     <h2>Was passiert</h2>
     <p>Kleine Lautsprecher können tiefe Töne kaum abspielen. Phantombass erkennt den Basston und fügt leise seine Obertöne hinzu, also das Doppelte, Dreifache und Vierfache der Frequenz. Daraus ergänzt das Ohr den tiefen Ton von selbst. Der Originalton bleibt dabei unverändert.</p>
+    <p>Viele MP3s und Videos sind beim Komprimieren oben abgeschnitten, oft bei 11 bis 16 kHz. Dann fehlt der Glanz von Becken und Stimmen. Phantombass erkennt diese Kante und ergänzt die fehlenden Höhen aus dem Bereich darunter, so wie es moderne Audio-Codecs tun. Dateien mit vollständigen Höhen bleiben unverändert.</p>
   </section>
 </div>
 
@@ -338,6 +339,143 @@ function makeExample(ctx) {
   return buf;
 }
 
+// ---- Höhen-Auffrischung: restore the treble that lossy encoding cut off ----
+// MP3/AAC encoders at low bitrates drop everything above a fixed frequency
+// (often 11, 15 or 16 kHz). We find that edge in the long-term spectrum and
+// regenerate the missing band the way HE-AAC's spectral band replication
+// does: the octave below the edge is copied upwards in the STFT, shaped to
+// continue the song's own treble slope. The copy follows every frame, so
+// cymbals and consonants keep their timing. Full-band files are left alone.
+const HF_N = 2048, HF_HOP = HF_N / 2;
+
+function fftInPlace(re, im) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = -2 * Math.PI / len, wr = Math.cos(ang), wi = Math.sin(ang), half = len >> 1;
+    for (let i = 0; i < n; i += len) {
+      let cr = 1, ci = 0;
+      for (let k = 0; k < half; k++) {
+        const a = i + k, b = a + half;
+        const xr = re[b] * cr - im[b] * ci, xi = re[b] * ci + im[b] * cr;
+        re[b] = re[a] - xr; im[b] = im[a] - xi; re[a] += xr; im[a] += xi;
+        const t = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = t;
+      }
+    }
+  }
+}
+
+// Long-term spectrum (dB per bin) of the loud parts, then the edge.
+// Returns null when the file already reaches the top of the audible band.
+function hfAnalyse(channels, sr) {
+  const n = HF_N, len = channels[0].length, win = new Float32Array(n);
+  for (let i = 0; i < n; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / n);
+  const pow = new Float64Array(n / 2 + 1), re = new Float64Array(n), im = new Float64Array(n);
+  let frames = 0;
+  const step = Math.max(n, Math.floor(len / 1500 / n) * n);  // ~1500 frames are plenty
+  for (let start = 0; start + n <= len; start += step) {
+    let e = 0;
+    for (let i = 0; i < n; i++) {
+      let x = 0;
+      for (const c of channels) x += c[start + i];
+      x /= channels.length; re[i] = x * win[i]; im[i] = 0; e += x * x;
+    }
+    if (e / n < 1e-6) continue;  // skip silence (below -60 dBFS)
+    fftInPlace(re, im);
+    for (let k = 0; k <= n / 2; k++) pow[k] += re[k] * re[k] + im[k] * im[k];
+    frames++;
+  }
+  if (frames < 4) return null;
+  const binHz = sr / n, db = new Float64Array(n / 2 + 1);
+  // Smooth over ~250 Hz so single tones don't look like an edge.
+  const w = Math.max(1, Math.round(125 / binHz));
+  for (let k = 0; k <= n / 2; k++) {
+    let s = 0, c = 0;
+    for (let j = Math.max(0, k - w); j <= Math.min(n / 2, k + w); j++) { s += pow[j]; c++; }
+    db[k] = 10 * Math.log10(s / c / frames + 1e-20);
+  }
+  const bin = f => Math.min(n / 2, Math.round(f / binHz));
+  const mean = (a, b) => { let s = 0; for (let k = bin(a); k <= bin(b); k++) s += db[k]; return s / (bin(b) - bin(a) + 1); };
+  const top = Math.min(20000, 0.48 * sr);
+  const ref = mean(4000, 8000);
+  // Highest frequency that still carries content within 45 dB of the mids.
+  let edge = -1;
+  for (let k = bin(top); k >= bin(6000); k--) if (db[k] > ref - 45) { edge = k * binHz; break; }
+  if (edge < 0 || edge > top - 1000) return null;  // full band, nothing missing
+  // A codec edge is a cliff: much less above it than just below it.
+  const below = mean(edge - 1500, edge - 500), above = mean(Math.min(top, edge + 500), Math.min(top, edge + 1500));
+  if (below - above < 25) return null;  // natural roll-off, not a cut
+  // Start the new band where the level first sags under the plateau below the edge.
+  let cut = edge;
+  const plateau = mean(edge - 3000, edge - 1500);
+  for (let k = bin(edge - 1500); k <= bin(edge); k++) if (db[k] < plateau - 3) { cut = k * binHz; break; }
+  // Treble slope (dB per octave) from cut/4 to cut, to continue it upwards.
+  let sx = 0, sy = 0, sxx = 0, sxy = 0, m = 0;
+  for (let k = bin(cut / 4); k <= bin(cut * 0.95); k++) {
+    const x = Math.log2(k * binHz), y = db[k];
+    sx += x; sy += y; sxx += x * x; sxy += x * y; m++;
+  }
+  const slope = Math.min(-3, Math.max(-15, (m * sxy - sx * sy) / (m * sxx - sx * sx)));
+  return { cutHz: cut, topHz: top, slope };
+}
+
+// Renders only the regenerated band (to be added to the original).
+// onProgress(0..1) is awaited between chunks so the page stays responsive.
+async function hfRender(channels, sr, info, onProgress) {
+  const n = HF_N, hop = HF_HOP, len = channels[0].length, binHz = sr / n;
+  const kc = Math.round(info.cutHz / binHz), kt = Math.min(n / 2 - 1, Math.round(info.topHz / binHz));
+  // Copy distance: an even number of bins (exact frequency shift at 50 %
+  // overlap), at most an octave so the source is the band right below the cut.
+  let D = Math.min(kc >> 1, kt - kc + 1);
+  D -= D & 1;
+  const win = new Float64Array(n);  // sqrt-Hann in and out: overlap-adds to 1
+  for (let i = 0; i < n; i++) win[i] = Math.sin(Math.PI * i / n);
+  const gain = new Float64Array(n / 2 + 1);
+  for (let k = kc; k <= kt; k++) {
+    const src = kc - D + ((k - kc) % D);
+    // Continue the slope, 3 dB under it (better slightly dull than hissy),
+    // and fade in/out over the first and last 500 Hz.
+    const dbg = info.slope * Math.log2(k / src) - 3;
+    const fade = Math.min(1, (k - kc + 1) * binHz / 500, (kt - k + 1) * binHz / 500);
+    gain[k] = Math.pow(10, dbg / 20) * fade;
+  }
+  const out = channels.map(() => new Float32Array(len));
+  const re = new Float64Array(n), im = new Float64Array(n), yr = new Float64Array(n), yi = new Float64Array(n);
+  const total = channels.length * Math.ceil((len + n) / hop);
+  let done = 0, lastYield = Date.now();
+  for (let c = 0; c < channels.length; c++) {
+    const x = channels[c], y = out[c];
+    for (let start = -hop; start < len; start += hop) {
+      for (let i = 0; i < n; i++) {
+        const t = start + i;
+        re[i] = t >= 0 && t < len ? x[t] * win[i] : 0; im[i] = 0;
+      }
+      fftInPlace(re, im);
+      yr.fill(0); yi.fill(0);
+      for (let k = kc; k <= kt; k++) {
+        const src = kc - D + ((k - kc) % D), g = gain[k];
+        yr[k] = re[src] * g; yi[k] = im[src] * g;
+        yr[n - k] = yr[k]; yi[n - k] = -yi[k];  // keep the output real
+      }
+      // Inverse FFT via conjugation.
+      for (let i = 0; i < n; i++) yi[i] = -yi[i];
+      fftInPlace(yr, yi);
+      for (let i = 0; i < n; i++) {
+        const t = start + i;
+        if (t >= 0 && t < len) y[t] += yr[i] / n * win[i];
+      }
+      done++;
+      if (onProgress && Date.now() - lastYield > 40) { lastYield = Date.now(); await onProgress(done / total); }
+    }
+  }
+  return out;
+}
+
 
 // ---- Player ----
 const WORKLET_SRC = `${Biquad.toString()}\n${PitchTracker.toString()}\n${VirtualBass.toString()}\n
@@ -356,7 +494,8 @@ class VBProcessor extends AudioWorkletProcessor {
 registerProcessor('virtual-bass', VBProcessor);`;
 
 const $ = id => document.getElementById(id);
-const state = { ctx: null, node: null, fallbackVb: null, buffer: null, source: null, playing: false, startedAt: 0, offset: 0 };
+const state = { ctx: null, node: null, fallbackVb: null, buffer: null, source: null, playing: false, startedAt: 0, offset: 0,
+  hfGain: null, hfBuffer: null, hfSource: null, hfJob: 0 };
 let enabled = true;
 
 async function ensureAudio() {
@@ -379,6 +518,10 @@ async function ensureAudio() {
   }
   // No extra gain, filter or limiter: with the switch off you hear the file exactly as it is.
   state.node.connect(ctx.destination);
+  // Regenerated treble is added before the bass effect; its gain is the switch.
+  state.hfGain = ctx.createGain();
+  state.hfGain.gain.value = enabled ? 1 : 0;
+  state.hfGain.connect(state.node);
   if (!state.buffer) state.buffer = makeExample(ctx);
   pushEnabled();
 }
@@ -386,6 +529,7 @@ async function ensureAudio() {
 function pushEnabled() {
   if (!state.ctx) return;
   if (state.fallbackVb) state.fallbackVb.setParams({ enabled }); else state.node.port.postMessage({ enabled });
+  state.hfGain.gain.setTargetAtTime(enabled ? 1 : 0, state.ctx.currentTime, 0.01);
 }
 
 function position() {
@@ -394,6 +538,20 @@ function position() {
 }
 function stopSource() {
   if (state.source) { const s = state.source; state.source = null; try { s.stop(); } catch (e) {} s.disconnect(); }
+  stopHf();
+}
+function stopHf() {
+  if (state.hfSource) { const s = state.hfSource; state.hfSource = null; try { s.stop(); } catch (e) {} s.disconnect(); }
+}
+// Starts the treble layer in sync with the song (also when it finishes rendering mid-play).
+function startHf() {
+  stopHf();
+  if (!state.hfBuffer || !state.playing) return;
+  const src = state.ctx.createBufferSource();
+  src.buffer = state.hfBuffer; src.connect(state.hfGain);
+  const t = state.ctx.currentTime + 0.05, at = state.offset + t - state.startedAt;
+  if (at >= state.hfBuffer.duration) return;
+  src.start(t, at); state.hfSource = src;
 }
 function start(at) {
   stopSource();
@@ -402,6 +560,7 @@ function start(at) {
   src.onended = () => { if (state.source === src) { state.playing = false; state.offset = 0; renderPlay(); } };
   state.offset = at; state.startedAt = state.ctx.currentTime;
   src.start(0, at); state.source = src; state.playing = true; renderPlay();
+  startHf();
 }
 function renderPlay() {
   $('playIcon').innerHTML = state.playing ? '<path d="M6 4.5h4.5v15H6zM13.5 4.5H18v15h-4.5z"/>' : '<path d="M7 4.5v15l13-7.5z"/>';
@@ -435,13 +594,32 @@ async function loadFile(file) {
   try {
     const buf = await state.ctx.decodeAudioData(await file.arrayBuffer());
     stopSource(); state.playing = false; renderPlay();
-    state.buffer = buf; state.offset = 0;
+    state.buffer = buf; state.offset = 0; state.hfBuffer = null;
     $('name').textContent = file.name;
     $('status').textContent = 'Geladen. Drück auf Abspielen.';
+    refreshTreble(buf);
   } catch (e) {
     $('status').innerHTML = '<span class="error">Diese Datei kann der Browser nicht lesen.</span> MP3, M4A, WAV, FLAC und MP4-Videos funktionieren.';
   }
 }
+async function refreshTreble(buf) {
+  const job = ++state.hfJob;
+  const chans = []; for (let c = 0; c < buf.numberOfChannels; c++) chans.push(buf.getChannelData(c));
+  const info = hfAnalyse(chans, buf.sampleRate);
+  if (!info) { $('status').textContent = 'Geladen. Die Höhen sind vollständig, da fehlt nichts. Drück auf Abspielen.'; return; }
+  const kHz = (info.cutHz / 1000).toFixed(1).replace('.', ',');
+  const out = await hfRender(chans, buf.sampleRate, info, p => {
+    if (job === state.hfJob) $('status').textContent = `Die Datei ist bei ${kHz} kHz abgeschnitten. Höhen werden ergänzt … ${Math.round(p * 100)} %`;
+    return new Promise(r => setTimeout(r, 0));
+  });
+  if (job !== state.hfJob) return;  // another file was loaded meanwhile
+  const hb = state.ctx.createBuffer(out.length, buf.length, buf.sampleRate);
+  out.forEach((d, c) => hb.copyToChannel(d, c));
+  state.hfBuffer = hb;
+  $('status').textContent = `Höhen ab ${kHz} kHz ergänzt. Mit dem Schalter hörst du den Unterschied.`;
+  startHf();
+}
+
 $('file').addEventListener('change', e => loadFile(e.target.files[0]));
 document.addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('drop-active'); });
 document.addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('drop-active'); });
@@ -456,6 +634,5 @@ document.addEventListener('drop', e => { e.preventDefault(); document.body.class
   requestAnimationFrame(tick);
 })();
 </script>
-
 </body>
 </html>
