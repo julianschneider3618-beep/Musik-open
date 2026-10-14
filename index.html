@@ -16,7 +16,7 @@ img { max-width: 100%; }
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-/* Layout: one small player card — file, transport, and a single on/off switch. Nothing to configure. */
+/* Layout: one player card — file, transport, one main switch and an on/off per improvement. No sliders. */
 :root {
   --bg: #e8eaee;
   --panel: #f6f7f9;
@@ -83,6 +83,25 @@ button:focus-visible, .filebtn:focus-within, input:focus-visible { outline: 2px 
 .switch[aria-pressed="true"] .knob { background: var(--accent); }
 .switch[aria-pressed="true"] .knob::after { transform: translateX(22px); }
 
+/* One row per improvement, each with its own on/off. */
+.features { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.feature { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 8px; background: var(--bg); }
+.feature .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.feature h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.feature p { margin: 0; font-size: 13px; color: var(--muted); }
+.mini { min-height: 32px; padding: 0; border: 0; background: none; flex: none; }
+.mini .knob { width: 46px; height: 28px; border-radius: 14px; background: var(--line); position: relative; transition: background 0.15s; }
+.mini .knob::after { content: ""; position: absolute; top: 4px; left: 4px; width: 20px; height: 20px; border-radius: 50%; background: var(--panel); transition: transform 0.15s; }
+.mini[aria-pressed="true"] .knob { background: var(--accent); }
+.mini[aria-pressed="true"] .knob::after { transform: translateX(18px); }
+.mini.dim[aria-pressed="true"] .knob { background: var(--muted); }
+.mini:disabled { cursor: default; opacity: 0.45; }
+.small { min-height: 36px; padding: 6px 12px; font-size: 13px; justify-self: start; }
+.measure { display: grid; gap: 8px; font-size: 13px; color: var(--muted); }
+.measure p { margin: 0; }
+.measure a { color: var(--accent); }
+.bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }
 .status { margin: 0; font-size: 13px; color: var(--muted); }
 .error { color: var(--accent); font-weight: 600; }
 .drop-active .card { outline: 2px dashed var(--accent); outline-offset: 4px; }
@@ -95,7 +114,7 @@ button:focus-visible, .filebtn:focus-within, input:focus-visible { outline: 2px 
 <div class="wrap">
   <header>
     <h1>Phantombass</h1>
-    <p class="lede">Mehr Bass auf kleinen Lautsprechern und frische Höhen für abgeschnittene MP3s. Song oder Video laden, abspielen, einschalten.</p>
+    <p class="lede">Besserer Klang für Songs und Videos: mehr Bass auf kleinen Lautsprechern, frische Höhen, ausgewogener Klang. Laden, abspielen, fertig.</p>
   </header>
 
   <section class="card" aria-label="Player">
@@ -113,16 +132,53 @@ button:focus-visible, .filebtn:focus-within, input:focus-visible { outline: 2px 
     </div>
 
     <button class="switch" id="toggle" aria-pressed="true">
-      <span class="label">Phantombass<small id="toggleHint">An. Zum Vergleichen ausschalten.</small></span>
+      <span class="label">Alle Verbesserungen<small id="toggleHint">An. Zum Vergleichen mit dem Original ausschalten.</small></span>
       <span class="knob" aria-hidden="true"></span>
     </button>
     <p class="status" id="status">Bereit.</p>
+    <ul class="features" aria-label="Verbesserungen">
+      <li class="feature">
+        <div class="row"><h3 id="t-bass">Phantombass</h3><button class="mini" id="sw-bass" aria-pressed="true" aria-labelledby="t-bass"><span class="knob" aria-hidden="true"></span></button></div>
+        <p id="note-bass"></p>
+      </li>
+      <li class="feature">
+        <div class="row"><h3 id="t-hf">Höhen ergänzen</h3><button class="mini" id="sw-hf" aria-pressed="true" aria-labelledby="t-hf"><span class="knob" aria-hidden="true"></span></button></div>
+        <p id="note-hf"></p>
+      </li>
+      <li class="feature">
+        <div class="row"><h3 id="t-bal">Klangbalance</h3><button class="mini" id="sw-bal" aria-pressed="true" aria-labelledby="t-bal"><span class="knob" aria-hidden="true"></span></button></div>
+        <p id="note-bal"></p>
+      </li>
+      <li class="feature">
+        <div class="row"><h3 id="t-loud">Gleiche Lautstärke</h3><button class="mini" id="sw-loud" aria-pressed="true" aria-labelledby="t-loud"><span class="knob" aria-hidden="true"></span></button></div>
+        <p id="note-loud"></p>
+      </li>
+      <li class="feature">
+        <div class="row"><h3 id="t-width">Stereo breiter</h3><button class="mini" id="sw-width" aria-pressed="true" aria-labelledby="t-width"><span class="knob" aria-hidden="true"></span></button></div>
+        <p id="note-width"></p>
+      </li>
+      <li class="feature">
+        <div class="row"><h3 id="t-spk">Lautsprecher-Korrektur</h3><button class="mini" id="sw-spk" aria-pressed="true" aria-labelledby="t-spk"><span class="knob" aria-hidden="true"></span></button></div>
+        <p id="note-spk"></p>
+        <button class="small" id="measureBtn">Lautsprecher messen</button>
+        <div class="measure" id="measurePanel" hidden>
+          <p>Stell die Lautstärke ein wie beim normalen Hören und halte das Handy etwa 20 cm vor den Lautsprecher.</p>
+          <p id="measureText"></p>
+          <div class="bar" aria-hidden="true"><i id="measureBar"></i></div>
+          <button class="small" id="measureCancel">Abbrechen</button>
+        </div>
+      </li>
+    </ul>
   </section>
 
   <section class="about">
     <h2>Was passiert</h2>
-    <p>Kleine Lautsprecher können tiefe Töne kaum abspielen. Phantombass erkennt den Basston und fügt leise seine Obertöne hinzu, also das Doppelte, Dreifache und Vierfache der Frequenz. Daraus ergänzt das Ohr den tiefen Ton von selbst. Der Originalton bleibt dabei unverändert.</p>
-    <p>Viele MP3s und Videos sind beim Komprimieren oben abgeschnitten, oft bei 11 bis 16 kHz. Dann fehlt der Glanz von Becken und Stimmen. Phantombass erkennt diese Kante und ergänzt die fehlenden Höhen aus dem Bereich darunter, so wie es moderne Audio-Codecs tun. Dateien mit vollständigen Höhen bleiben unverändert.</p>
+    <p><b>Phantombass:</b> Kleine Lautsprecher können tiefe Töne kaum abspielen. Wenn ein Song echten tiefen Bass hat, fügt Phantombass leise dessen Obertöne hinzu, daraus ergänzt das Ohr den tiefen Ton. Songs ohne tiefen Bass bekommen nichts dazu.</p>
+    <p><b>Höhen ergänzen:</b> Viele MP3s und Videos sind beim Komprimieren oben abgeschnitten. Die fehlenden Höhen werden aus dem Bereich darunter ergänzt, wie es moderne Audio-Codecs tun.</p>
+    <p><b>Klangbalance:</b> Der ganze Song wird analysiert. Klingt er dumpf, mulmig oder scharf, wird er sanft in Richtung gut abgemischter Musik verschoben, höchstens 3 dB und ohne lauter zu werden.</p>
+    <p><b>Gleiche Lautstärke:</b> Jeder Song spielt so laut wie bei Spotify und YouTube üblich (−14 LUFS), ohne zu übersteuern.</p>
+    <p><b>Stereo breiter:</b> Der Raumanteil über 300 Hz wird etwas lauter. Bass und Stimme bleiben in der Mitte.</p>
+    <p><b>Lautsprecher-Korrektur:</b> Das Handy misst deinen Lautsprecher einmal mit dem Mikrofon. Danach werden seine Schwächen ausgeglichen, und Phantombass setzt genau dort an, wo sein Bass aufhört.</p>
   </section>
 </div>
 
@@ -203,6 +259,7 @@ class VirtualBass {
     const tc = s => Math.exp(-1 / (s * sr));
     this.rel = tc(0.5); this.smooth = tc(0.02); this.powC = tc(0.25); this.hrRel = tc(0.05); this.hrGain = 1;
     this.glideC = tc(0.01); this.confC = tc(0.03); this.ampC = tc(0.015);
+    this.bassLvl = 0; this.fullLvl = 0; this.presence = 1;
     this.env = 0; this.wet = 1; this.dryHp = 0; this.bassPow = 0; this.harmPow = 0; this.autoGain = 1;
     this.tracker = new PitchTracker(sr);
     this.phase = 0; this.f0 = 0; this.conf = 0; this.ms = 0; this.gains = new Float32Array(17); this.gainsF0 = -1;
@@ -289,6 +346,16 @@ class VirtualBass {
         if (this.harmPow > 1e-12) this.autoGain = Math.max(0, Math.min(4, 0.3 * Math.sqrt(this.bassPow / this.harmPow)));
         gain = this.autoGain;
       }
+      // Only reinforce bass that is really there: harmonics fade when the bass band holds less than
+      // -12 dB of the mix's power and are gone at -24 dB, so songs without deep bass get nothing invented.
+      const mono = 0.5 * (l + r);
+      this.bassLvl = this.powC * this.bassLvl + (1 - this.powC) * bass * bass;
+      this.fullLvl = this.powC * this.fullLvl + (1 - this.powC) * mono * mono;
+      if (this.fullLvl > 1e-12) {
+        const x = Math.max(0, Math.min(1, (10 * Math.log10(this.bassLvl / this.fullLvl + 1e-12) + 24) / 12));
+        this.presence = x * x * (3 - 2 * x);
+      }
+      gain *= this.presence;
       this.wet = this.smooth * this.wet + (1 - this.smooth) * wetT * gain;
       this.dryHp = this.smooth * this.dryHp + (1 - this.smooth) * hpT;
       const hl = dl2.process(dl1.process(l)), hr = dr2.process(dr1.process(r));
@@ -477,26 +544,358 @@ async function hfRender(channels, sr, info, onProgress) {
 }
 
 
+// ---- Filters for the tone stages (RBJ cookbook) ----
+function peakCoefs(sr, f, q, db) {
+  const A = Math.pow(10, db / 40), w = 2 * Math.PI * f / sr, c = Math.cos(w), al = Math.sin(w) / (2 * q), a0 = 1 + al / A;
+  return [(1 + al * A) / a0, -2 * c / a0, (1 - al * A) / a0, -2 * c / a0, (1 - al / A) / a0];
+}
+function highShelfCoefs(sr, f, q, db) {
+  const A = Math.pow(10, db / 40), w = 2 * Math.PI * f / sr, c = Math.cos(w), al = Math.sin(w) / (2 * q), s = 2 * Math.sqrt(A) * al;
+  const a0 = (A + 1) - (A - 1) * c + s;
+  return [A * ((A + 1) + (A - 1) * c + s) / a0, -2 * A * ((A - 1) + (A + 1) * c) / a0, A * ((A + 1) + (A - 1) * c - s) / a0,
+    2 * ((A - 1) - (A + 1) * c) / a0, ((A + 1) - (A - 1) * c - s) / a0];
+}
+function bandCoefs(sr, b) {
+  if (b.type === 'gain') return [Math.pow(10, b.db / 20), 0, 0, 0, 0];
+  return b.type === 'high' ? highShelfCoefs(sr, b.f, b.q, b.db) : peakCoefs(sr, b.f, b.q, b.db);
+}
+// Power response |H|^2 of a coefficient set at frequency f.
+function coefsPower(k, f, sr) {
+  const w = 2 * Math.PI * f / sr, c1 = Math.cos(w), s1 = Math.sin(w), c2 = Math.cos(2 * w), s2 = Math.sin(2 * w);
+  const nr = k[0] + k[1] * c1 + k[2] * c2, ni = -(k[1] * s1 + k[2] * s2);
+  const dr = 1 + k[3] * c1 + k[4] * c2, di = -(k[3] * s1 + k[4] * s2);
+  return (nr * nr + ni * ni) / (dr * dr + di * di);
+}
+
+// ---- Everything that runs on the audio thread, in this order:
+// tone balance -> speaker correction -> equal loudness -> wider stereo -> Phantombass -> clip guard.
+// Each stage fades in and out over ~20 ms; a stage that is off passes the samples through untouched,
+// so with every switch off the output is the file, bit for bit.
+class Enhancer {
+  constructor(sr) {
+    this.sr = sr; this.vb = new VirtualBass(sr); this.vb.wet = 0;
+    this.bal = null; this.spk = null;
+    this.sideLp = new Biquad(); this.sideLp.set(sr, 300, Math.SQRT1_2, false);
+    const tc = s => Math.exp(-1 / (s * sr));
+    this.sm = tc(0.02); this.guardRel = tc(0.1); this.guard = 1;
+    this.t = { bal: 0, spk: 0, gain: 1, width: 0 }; this.m = { bal: 0, spk: 0, gain: 1, width: 0 };
+    this.p = { bal: false, spk: false, loud: false, width: false, bass: true, gainDb: 0 };
+  }
+  bank(bands) {
+    if (!bands || !bands.length) return null;
+    return [0, 1].map(() => bands.map(b => { const f = new Biquad(); const k = bandCoefs(this.sr, b);
+      f.b0 = k[0]; f.b1 = k[1]; f.b2 = k[2]; f.a1 = k[3]; f.a2 = k[4]; return f; }));
+  }
+  setParams(p) {
+    if ('balBands' in p) this.bal = this.bank(p.balBands);
+    if ('spkBands' in p) this.spk = this.bank(p.spkBands);
+    Object.assign(this.p, p);
+    const q = this.p;
+    this.t.bal = q.bal && this.bal ? 1 : 0;
+    this.t.spk = q.spk && this.spk ? 1 : 0;
+    this.t.gain = q.loud ? Math.pow(10, q.gainDb / 20) : 1;
+    this.t.width = q.width ? 1 : 0;
+    const vbp = { enabled: !!q.bass };
+    if (q.cutoff) vbp.cutoff = q.cutoff;
+    this.vb.setParams(vbp);
+  }
+  process(L, R, n) {
+    const m = this.m, t = this.t, sm = this.sm;
+    for (let i = 0; i < n; i++) {
+      for (const key in t) { const d = m[key] - t[key]; m[key] = Math.abs(d) < 1e-5 ? t[key] : t[key] + sm * d; }
+      let l = L[i], r = R ? R[i] : l;
+      for (const [mix, bank] of [[m.bal, this.bal], [m.spk, this.spk]]) {
+        if (mix === 0 || !bank) continue;
+        let el = l, er = r;
+        for (const f of bank[0]) el = f.process(el);
+        for (const f of bank[1]) er = f.process(er);
+        l += mix * (el - l); r += mix * (er - r);
+      }
+      if (m.gain !== 1) { l *= m.gain; r *= m.gain; }
+      if (m.width !== 0 && R) {
+        // Side signal above 300 Hz up by ~3 dB; the bass stays in the middle.
+        const s = 0.5 * (l - r), d = 0.4 * m.width * (s - this.sideLp.process(s));
+        l += d; r -= d;
+      }
+      L[i] = l; if (R) R[i] = r;
+    }
+    // Phantombass off and faded out: skip it, so the samples stay exactly as they are.
+    if (this.p.bass || this.vb.wet > 1e-6) this.vb.process(L, R, n);
+    // Clip guard: only ever acts where a sample would go past full scale.
+    for (let i = 0; i < n; i++) {
+      const pk = Math.max(Math.abs(L[i]), R ? Math.abs(R[i]) : 0);
+      const need = pk > 0.999 ? 0.999 / pk : 1;
+      this.guard = Math.min(need, this.guardRel * this.guard + (1 - this.guardRel));
+      if (this.guard < 1) { L[i] *= this.guard; if (R) R[i] *= this.guard; }
+    }
+  }
+}
+
+// ---- Song analysis on load (main thread) ----
+// Long-term average power spectrum of the loud parts (mono), N-point frames.
+function songSpectrum(channels, sr, n = 8192) {
+  const len = channels[0].length, win = new Float64Array(n);
+  for (let i = 0; i < n; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / n);
+  const pow = new Float64Array(n / 2 + 1), re = new Float64Array(n), im = new Float64Array(n);
+  let frames = 0;
+  const step = Math.max(n, Math.floor(len / 800 / n) * n);
+  for (let start = 0; start + n <= len; start += step) {
+    let e = 0;
+    for (let i = 0; i < n; i++) {
+      let x = 0; for (const c of channels) x += c[start + i];
+      x /= channels.length; re[i] = x * win[i]; im[i] = 0; e += x * x;
+    }
+    if (e / n < 1e-5) continue;  // below -50 dBFS
+    fftInPlace(re, im);
+    for (let k = 0; k <= n / 2; k++) pow[k] += re[k] * re[k] + im[k] * im[k];
+    frames++;
+  }
+  if (frames < 4) return null;
+  for (let k = 0; k <= n / 2; k++) pow[k] /= frames;
+  return { pow, n, sr };
+}
+// Mean power per Hz in the band [f/sqrt2, f*sqrt2] (dB).
+function bandDb(spec, lo, hi) {
+  const bin = spec.sr / spec.n; let s = 0, c = 0;
+  for (let k = Math.max(1, Math.round(lo / bin)); k <= Math.min(spec.n / 2, Math.round(hi / bin)); k++) { s += spec.pow[k]; c++; }
+  return 10 * Math.log10(s / Math.max(1, c) + 1e-30);
+}
+
+// Tone balance. Fits a line through the octave levels 125 Hz - 8 kHz. Bumps and dips more than
+// 1.5 dB off that line are halved (muddy or boxy mixes), and a tilt far from typical well-mixed
+// pop/rock (about -4.5 dB per octave in power per Hz) is pulled halfway back. Never more than 3 dB.
+const BAL_CENTERS = [125, 250, 500, 1000, 2000, 4000, 8000];
+const BAL_REF_SLOPE = -4.5;
+function balanceAnalyse(spec) {
+  const xs = BAL_CENTERS.map(f => Math.log2(f / 1000));
+  const ys = BAL_CENTERS.map(f => bandDb(spec, f / Math.SQRT2, f * Math.SQRT2));
+  // Robust line (Theil-Sen): one or two bumped bands don't bend it.
+  const n = xs.length, pairs = [];
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) pairs.push((ys[j] - ys[i]) / (xs[j] - xs[i]));
+  const median = a => { const b = [...a].sort((p, q) => p - q), h = b.length >> 1; return b.length % 2 ? b[h] : 0.5 * (b[h - 1] + b[h]); };
+  const slope = median(pairs), icpt = median(ys.map((y, i) => y - slope * xs[i]));
+  const dev = BAL_REF_SLOPE - slope;
+  const tilt = Math.max(-1, Math.min(1, 0.5 * Math.sign(dev) * Math.max(0, Math.abs(dev) - 1.5)));
+  const gains = ys.map((y, i) => {
+    const r = y - (icpt + slope * xs[i]);
+    const local = -0.5 * Math.sign(r) * Math.max(0, Math.abs(r) - 1.5);
+    return Math.max(-3, Math.min(3, local + tilt * xs[i]));
+  });
+  const bands = [];
+  BAL_CENTERS.forEach((f, i) => { if (Math.abs(gains[i]) >= 0.5) bands.push({ type: 'peak', f, q: 1.41, db: +gains[i].toFixed(2) }); });
+  if (Math.abs(tilt) > 0) {
+    // Carry the tilt above 8 kHz with a shelf.
+    const db = Math.max(-3, Math.min(3, tilt * 4)) - 0.3 * gains[n - 1];
+    if (Math.abs(db) >= 0.5) bands.push({ type: 'high', f: 11000, q: 0.7, db: +db.toFixed(2) });
+  }
+  if (!bands.length) return { bands: null, slope, gains };
+  // Neighbouring filters add up; scale them so the combined change stays within 3 dB.
+  const resp = bs => { let mx = 0; for (let f = 100; f <= 16000; f *= 1.05) {
+    const v = Math.abs(10 * Math.log10(bs.reduce((p, b) => p * coefsPower(bandCoefs(spec.sr, b), f, spec.sr), 1))); if (v > mx) mx = v; } return mx; };
+  for (let i = 0; i < 8 && resp(bands) > 3.05; i++) { const k = 3 / resp(bands); for (const b of bands) b.db = +(b.db * k).toFixed(2); }
+  // Keep the song as loud as before (never louder): match total power over the spectrum.
+  const ks = bands.map(b => bandCoefs(spec.sr, b));
+  let p0 = 0, p1 = 0; const bin = spec.sr / spec.n;
+  for (let k = 1; k <= spec.n / 2; k++) {
+    let h = 1; for (const c of ks) h *= coefsPower(c, k * bin, spec.sr);
+    p0 += spec.pow[k]; p1 += spec.pow[k] * h;
+  }
+  const makeup = Math.min(0, 10 * Math.log10(p0 / p1));
+  if (makeup < -0.05) bands.push({ type: 'gain', db: +makeup.toFixed(2) });
+  return { bands, slope, gains, makeupDb: makeup };
+}
+
+// ITU-R BS.1770 integrated loudness (LUFS) and sample peak.
+function loudnessAnalyse(channels, sr) {
+  // K-weighting at any sample rate (the BS.1770 48 kHz coefficients, redesigned via the bilinear transform).
+  let K = Math.tan(Math.PI * 1681.974450955533 / sr), Q = 0.7071752369554196;
+  const Vh = Math.pow(10, 3.999843853973347 / 20), Vb = Math.pow(Vh, 0.4996667741545416);
+  let a0 = 1 + K / Q + K * K;
+  const shelf = [(Vh + Vb * K / Q + K * K) / a0, 2 * (K * K - Vh) / a0, (Vh - Vb * K / Q + K * K) / a0, 2 * (K * K - 1) / a0, (1 - K / Q + K * K) / a0];
+  K = Math.tan(Math.PI * 38.13547087602444 / sr); Q = 0.5003270373238773; a0 = 1 + K / Q + K * K;
+  const hp = [1, -2, 1, 2 * (K * K - 1) / a0, (1 - K / Q + K * K) / a0];
+  const block = Math.round(0.4 * sr), hop = Math.round(0.1 * sr), len = channels[0].length;
+  const nb = Math.max(0, Math.floor((len - block) / hop) + 1), sums = new Float64Array(Math.max(1, Math.ceil(len / hop)));
+  let peak = 0;
+  for (const x of channels) {
+    const run = (k, v, s) => { const y = k[0] * v + s[0]; s[0] = k[1] * v - k[3] * y + s[1]; s[1] = k[2] * v - k[4] * y; return y; };
+    const s1 = [0, 0], s2 = [0, 0];
+    for (let i = 0; i < len; i++) {
+      const v = x[i]; peak = Math.max(peak, Math.abs(v));
+      const y = run(hp, run(shelf, v, s1), s2);
+      sums[Math.floor(i / hop)] += y * y;
+    }
+  }
+  const per = Math.round(block / hop), blocks = [];
+  for (let b = 0; b < nb; b++) { let s = 0; for (let j = 0; j < per; j++) s += sums[b + j]; blocks.push(s / block); }
+  const lk = z => -0.691 + 10 * Math.log10(z + 1e-30);
+  let g = blocks.filter(z => lk(z) > -70);
+  if (!g.length) return { lufs: -Infinity, peak };
+  const rel = lk(g.reduce((a, b) => a + b) / g.length) - 10;
+  g = g.filter(z => lk(z) > rel);
+  return { lufs: lk(g.reduce((a, b) => a + b) / g.length), peak };
+}
+const LOUD_TARGET = -14;
+// Gain towards -14 LUFS (the level Spotify and YouTube use), but never so much that the loudest
+// sample would pass -1 dBFS.
+function loudnessGain(info) {
+  if (!isFinite(info.lufs)) return 0;
+  const want = LOUD_TARGET - info.lufs, room = 20 * Math.log10(0.89 / Math.max(info.peak, 1e-6));
+  return Math.max(-12, Math.min(want, room, 12));
+}
+
+// ---- Speaker correction: measure the speaker once with the microphone ----
+// Third-octave bands of noise, 50 Hz - 12.5 kHz, one after another, over a constant 1 kHz
+// reference tone. Every band is read relative to the reference in the same window, so the
+// microphone's auto gain and the playback volume cancel out. Noise (not tones) averages out
+// room echoes. The result: the speaker's response, its lowest usable frequency (which becomes
+// Phantombass's cut-off) and a gentle correction (cuts up to 6 dB, boosts up to 3 dB).
+const SPK_CENTERS = [50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6300, 8000, 10000, 12500];
+class SpeakerCheck {
+  constructor(sr) {
+    this.sr = sr; this.refHz = 1000; this.preroll = 1.0; this.step = 0.5; this.maxLatency = 0.4;
+    this.edge = Math.pow(2, 1 / 6);
+  }
+  testSignal(seed = 12345) {
+    const sr = this.sr, pre = Math.floor(this.preroll * sr), step = Math.floor(this.step * sr);
+    const out = new Float32Array(pre + step * SPK_CENTERS.length + Math.floor(this.maxLatency * sr));
+    let N = 1; while (N < step) N <<= 1;
+    const re = new Float64Array(N), im = new Float64Array(N), fade = Math.floor(0.01 * sr);
+    let s = seed; const rnd = () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
+    SPK_CENTERS.forEach((fc, b) => {
+      re.fill(0); im.fill(0);
+      const lo = fc / this.edge, hi = fc * this.edge;
+      for (let k = 1; k < N / 2; k++) {
+        const f = k * sr / N;
+        if (f < lo || f > hi || Math.abs(f - this.refHz) < 40) continue;
+        const ph = 2 * Math.PI * rnd(); re[k] = Math.cos(ph); im[k] = Math.sin(ph); re[N - k] = re[k]; im[N - k] = -im[k];
+      }
+      fftInPlace(re, im);  // real noise (sign of the exponent doesn't matter for random phase)
+      let e = 0; for (let i = 0; i < step; i++) e += re[i] * re[i];
+      const g = 0.12 / Math.sqrt(e / step);
+      for (let i = 0; i < step; i++) out[pre + b * step + i] = g * re[i] * Math.min(1, i / fade, (step - i) / fade);
+    });
+    for (let i = pre; i < out.length; i++) {
+      out[i] += 0.05 * Math.min(1, (i - pre) / fade, (out.length - i) / fade) * Math.sin(2 * Math.PI * this.refHz * (i - pre) / sr);
+    }
+    return out;
+  }
+  // Power spectrum of x[start, start+len) with a Hann window, zero padded to N.
+  spectrum(x, start, len, N) {
+    const re = new Float64Array(N), im = new Float64Array(N);
+    for (let i = 0; i < len; i++) { const t = start + i; re[i] = t < x.length && t >= 0 ? x[t] * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / (len - 1))) : 0; }
+    fftInPlace(re, im);
+    const p = new Float64Array(N / 2); for (let k = 0; k < N / 2; k++) p[k] = re[k] * re[k] + im[k] * im[k];
+    return p;
+  }
+  sum(p, N, lo, hi, skipRef) {
+    const bin = this.sr / N; let s = 0;
+    for (let k = Math.ceil(lo / bin); k <= Math.floor(hi / bin) && k < p.length; k++) {
+      if (skipRef && Math.abs(k * bin - this.refHz) < 40) continue;
+      s += p[k];
+    }
+    return s;
+  }
+  analyze(rec) {
+    const sr = this.sr, pre = Math.floor(this.preroll * sr), step = Math.floor(this.step * sr);
+    const res = { ok: false };
+    if (rec.length < pre + step * SPK_CENTERS.length) return res;
+    // Latency from the onset of the reference tone (Bluetooth can add a few hundred ms).
+    const T = (start, len) => { const w = 2 * Math.PI * this.refHz / sr; let a = 0, b = 0;
+      for (let i = 0; i < len; i++) { const v = rec[start + i] || 0; a += v * Math.cos(w * i); b += v * Math.sin(w * i); } return Math.hypot(a, b) / len; };
+    const frame = Math.floor(0.01 * sr);
+    let noise = 0; for (let p = Math.floor(0.1 * sr); p + 2 * frame < pre - frame; p += frame) noise = Math.max(noise, T(p, 2 * frame));
+    let latency = -1;
+    for (let p = pre - frame; p + 2 * frame < pre + Math.floor(this.maxLatency * sr); p += frame / 2) {
+      if (T(p, 2 * frame) > Math.max(4 * noise, 1e-5)) { latency = Math.max(0, (p + frame - pre) / sr); break; }
+    }
+    if (latency < 0) return res;
+    const lat = Math.floor(latency * sr), len = Math.floor(0.36 * sr);
+    let N = 1; while (N < len) N <<= 1;
+    const quiet = this.spectrum(rec, Math.floor(0.2 * sr), len, N);
+    const db = SPK_CENTERS.map((fc, b) => {
+      const p = this.spectrum(rec, pre + b * step + lat + Math.floor(0.08 * sr), len, N);
+      const lo = fc / this.edge, hi = fc * this.edge;
+      const band = this.sum(p, N, lo, hi, true), floor = this.sum(quiet, N, lo, hi, true);
+      const ref = this.sum(p, N, this.refHz - 10, this.refHz + 10, false);
+      return band > 4 * floor && ref > 0 ? 10 * Math.log10((band - floor) / ref) : null;
+    });
+    // Relative to the average 200 Hz - 4 kHz.
+    const mids = db.filter((v, i) => v !== null && SPK_CENTERS[i] >= 200 && SPK_CENTERS[i] <= 4000);
+    if (mids.length < 8) return res;
+    const mid = mids.reduce((a, b) => a + b) / mids.length;
+    const rel = db.map(v => v === null ? null : v - mid);
+    // Lowest usable frequency: walking down from 200 Hz, the last band within 6 dB of the mids.
+    let lim = SPK_CENTERS.indexOf(200);
+    // A single band in a room notch (up to 12 dB) is stepped over when the band below it is fine again.
+    const okAt = i => i >= 0 && rel[i] !== null && rel[i] > -6;
+    for (;;) {
+      if (okAt(lim - 1)) lim--;
+      else if (okAt(lim - 2) && rel[lim - 1] !== null && rel[lim - 1] > -12) lim -= 2;
+      else break;
+    }
+    let cutoff = SPK_CENTERS[lim];
+    if (lim > 0 && rel[lim - 1] !== null) {
+      const a = rel[lim - 1], b = rel[lim], t = Math.max(0, Math.min(1, (b + 6) / (b - a)));
+      cutoff = SPK_CENTERS[lim] * Math.pow(SPK_CENTERS[lim - 1] / SPK_CENTERS[lim], t);
+    }
+    // Correction above the bass limit up to 10 kHz, smoothed over neighbouring bands.
+    const bands = [];
+    SPK_CENTERS.forEach((fc, i) => {
+      if (fc < cutoff * 1.25 || fc > 10000 || rel[i] === null) return;
+      // Smooth over 2/3 octave and correct 70 %: broad speaker traits, not room echoes at the phone.
+      const w = [0.1, 0.2, 0.4, 0.2, 0.1]; let smooth = 0;
+      for (let j = -2; j <= 2; j++) { const v = rel[i + j]; smooth += w[j + 2] * (v === null || v === undefined || SPK_CENTERS[i + j] < cutoff ? rel[i] : v); }
+      const g = Math.max(-6, Math.min(3, -0.7 * smooth));
+      if (Math.abs(g) >= 0.75) bands.push({ type: 'peak', f: fc, q: 4.32, db: +g.toFixed(2) });
+    });
+    Object.assign(res, { ok: true, latencySeconds: latency, cutoffHz: cutoff, levelsDb: rel, bands });
+    return res;
+  }
+}
+
 // ---- Player ----
-const WORKLET_SRC = `${Biquad.toString()}\n${PitchTracker.toString()}\n${VirtualBass.toString()}\n
-class VBProcessor extends AudioWorkletProcessor {
-  constructor() { super(); this.vb = new VirtualBass(sampleRate); this.port.onmessage = e => this.vb.setParams(e.data); }
+const WORKLET_SRC = [Biquad, PitchTracker, VirtualBass, peakCoefs, highShelfCoefs, bandCoefs, Enhancer].map(f => f.toString()).join('\n') + `
+class EnhProcessor extends AudioWorkletProcessor {
+  constructor() { super(); this.e = new Enhancer(sampleRate); this.port.onmessage = e => this.e.setParams(e.data); }
   process(inputs, outputs) {
     const inp = inputs[0], out = outputs[0];
     if (!inp.length) return true;
     const L = out[0], R = out[1];
     L.set(inp[0]);
     if (R) R.set(inp[1] || inp[0]);
-    this.vb.process(L, R || null, L.length);
+    this.e.process(L, R || null, L.length);
     return true;
   }
 }
-registerProcessor('virtual-bass', VBProcessor);`;
+registerProcessor('phantombass', EnhProcessor);`;
 
 const $ = id => document.getElementById(id);
-const state = { ctx: null, node: null, fallbackVb: null, buffer: null, source: null, playing: false, startedAt: 0, offset: 0,
-  hfGain: null, hfBuffer: null, hfSource: null, hfJob: 0 };
-let enabled = true;
+const state = { ctx: null, node: null, fallback: null, buffer: null, source: null, playing: false, startedAt: 0, offset: 0,
+  hfGain: null, hfBuffer: null, hfSource: null, job: 0, song: { gainDb: 0, balBands: null } };
+
+// Switches. "all" is the big one; the others are remembered in this browser.
+const FEATURES = ['bass', 'hf', 'bal', 'loud', 'width', 'spk'];
+const prefs = { all: true, bass: true, hf: true, bal: true, loud: true, width: false, spk: true };
+let speaker = null;  // { bands, cutoffHz } after a measurement
+try {
+  const saved = JSON.parse(localStorage.getItem('phantombass') || '{}');
+  if (saved.prefs) Object.assign(prefs, saved.prefs);
+  if (saved.speaker && Array.isArray(saved.speaker.bands)) speaker = saved.speaker;
+} catch (e) {}
+function save() { try { localStorage.setItem('phantombass', JSON.stringify({ prefs, speaker })); } catch (e) {} }
+const on = key => prefs.all && prefs[key] && (key !== 'spk' || !!speaker);
+
+function params() {
+  return { bass: on('bass'), bal: on('bal'), spk: on('spk'), loud: on('loud'), width: on('width'),
+    gainDb: state.song.gainDb, cutoff: speaker ? Math.max(40, Math.min(200, Math.round(speaker.cutoffHz))) : 120 };
+}
+function pushParams(extra) {
+  if (!state.ctx) return;
+  const p = Object.assign(params(), extra || {});
+  if (state.fallback) state.fallback.setParams(p); else state.node.port.postMessage(p);
+  state.hfGain.gain.setTargetAtTime(on('hf') ? 1 : 0, state.ctx.currentTime, 0.01);
+}
 
 async function ensureAudio() {
   if (state.ctx) return;
@@ -505,31 +904,25 @@ async function ensureAudio() {
   try {
     const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: 'application/javascript' }));
     await ctx.audioWorklet.addModule(url);
-    state.node = new AudioWorkletNode(ctx, 'virtual-bass', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
+    state.node = new AudioWorkletNode(ctx, 'phantombass', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
   } catch (e) {
     // Fallback for browsers or frames that refuse worklets.
-    const sp = ctx.createScriptProcessor(1024, 2, 2), vb = new VirtualBass(ctx.sampleRate);
+    const sp = ctx.createScriptProcessor(1024, 2, 2), en = new Enhancer(ctx.sampleRate);
     sp.onaudioprocess = ev => {
       const ib = ev.inputBuffer, ob = ev.outputBuffer, L = ob.getChannelData(0), R = ob.getChannelData(1);
       L.set(ib.getChannelData(0)); R.set(ib.numberOfChannels > 1 ? ib.getChannelData(1) : ib.getChannelData(0));
-      vb.process(L, R, L.length);
+      en.process(L, R, L.length);
     };
-    state.node = sp; state.fallbackVb = vb;
+    state.node = sp; state.fallback = en;
   }
-  // No extra gain, filter or limiter: with the switch off you hear the file exactly as it is.
+  // No extra gain, filter or limiter: with every switch off you hear the file exactly as it is.
   state.node.connect(ctx.destination);
-  // Regenerated treble is added before the bass effect; its gain is the switch.
+  // Regenerated treble is added before the other stages; its gain is its switch.
   state.hfGain = ctx.createGain();
-  state.hfGain.gain.value = enabled ? 1 : 0;
+  state.hfGain.gain.value = on('hf') ? 1 : 0;
   state.hfGain.connect(state.node);
-  if (!state.buffer) state.buffer = makeExample(ctx);
-  pushEnabled();
-}
-
-function pushEnabled() {
-  if (!state.ctx) return;
-  if (state.fallbackVb) state.fallbackVb.setParams({ enabled }); else state.node.port.postMessage({ enabled });
-  state.hfGain.gain.setTargetAtTime(enabled ? 1 : 0, state.ctx.currentTime, 0.01);
+  pushParams({ spkBands: speaker ? speaker.bands : null });
+  if (!state.buffer) { state.buffer = makeExample(ctx); analyseSong(state.buffer); }
 }
 
 function position() {
@@ -557,21 +950,100 @@ function start(at) {
   stopSource();
   const src = state.ctx.createBufferSource();
   src.buffer = state.buffer; src.connect(state.node);
-  src.onended = () => { if (state.source === src) { state.playing = false; state.offset = 0; renderPlay(); } };
+  src.onended = () => { if (state.source === src) { state.playing = false; state.offset = 0; stopHf(); renderPlay(); } };
   state.offset = at; state.startedAt = state.ctx.currentTime;
   src.start(0, at); state.source = src; state.playing = true; renderPlay();
   startHf();
 }
+function pause() { state.offset = position(); stopSource(); state.playing = false; renderPlay(); }
 function renderPlay() {
   $('playIcon').innerHTML = state.playing ? '<path d="M6 4.5h4.5v15H6zM13.5 4.5H18v15h-4.5z"/>' : '<path d="M7 4.5v15l13-7.5z"/>';
   $('play').setAttribute('aria-label', state.playing ? 'Pause' : 'Abspielen');
 }
 const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+const num = (v, d = 1) => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(d).replace('.', ',');
 
+// ---- Switch rendering ----
+function setNote(key, text) { $('note-' + key).textContent = text; }
+function renderSwitches() {
+  const all = $('toggle');
+  all.setAttribute('aria-pressed', String(prefs.all));
+  $('toggleHint').textContent = prefs.all ? 'An. Zum Vergleichen mit dem Original ausschalten.' : 'Aus. Du hörst das Original.';
+  for (const key of FEATURES) {
+    const b = $('sw-' + key), usable = key !== 'spk' || !!speaker;
+    b.setAttribute('aria-pressed', String(prefs[key] && usable));
+    b.disabled = !usable;
+    b.classList.toggle('dim', !prefs.all);
+  }
+}
+$('toggle').addEventListener('click', () => { prefs.all = !prefs.all; save(); renderSwitches(); pushParams(); });
+for (const key of FEATURES) {
+  $('sw-' + key).addEventListener('click', () => {
+    prefs[key] = !prefs[key];
+    if (prefs[key]) prefs.all = true;  // switching one on means you want to hear it
+    save(); renderSwitches(); pushParams();
+  });
+}
+
+// ---- Song analysis: tone balance, loudness, treble ----
+function describeBalance(bands) {
+  if (!bands) return 'Der Song ist schon ausgewogen, hier ändert sich nichts.';
+  // Describe what you hear: the combined response at a few points, not the single filters.
+  const sr = state.ctx.sampleRate, ks = bands.map(b => bandCoefs(sr, b));
+  const at = f => 10 * Math.log10(ks.reduce((p, k) => p * coefsPower(k, f, sr), 1));
+  const groups = [['Bass', [125]], ['tiefe Mitten', [250, 500]], ['Mitten', [1000, 2000]], ['Präsenz', [4000]], ['Höhen', [8000, 14000]]];
+  const parts = groups.map(([name, fs]) => [name, fs.map(at).reduce((a, b) => Math.abs(b) > Math.abs(a) ? b : a, 0)])
+    .filter(([, v]) => Math.abs(v) >= 1).map(([n, v]) => `${n} ${num(v)} dB`);
+  return parts.length ? `Angepasst: ${parts.join(', ')}.` : 'Nur ganz leicht angepasst (unter 1 dB).';
+}
+const tick0 = () => new Promise(r => setTimeout(r, 0));
+async function analyseSong(buf) {
+  const job = ++state.job;
+  state.hfBuffer = null; stopHf();
+  const chans = []; for (let c = 0; c < buf.numberOfChannels; c++) chans.push(buf.getChannelData(c));
+  for (const k of ['bal', 'loud', 'hf']) setNote(k, 'Wird analysiert …');
+  await tick0();
+  const spec = songSpectrum(chans, buf.sampleRate), bal = spec ? balanceAnalyse(spec) : { bands: null };
+  await tick0();
+  const loud = loudnessAnalyse(chans, buf.sampleRate);
+  if (job !== state.job) return;
+  state.song = { gainDb: loudnessGain(loud), balBands: bal.bands };
+  pushParams({ balBands: bal.bands });
+  setNote('bal', describeBalance(bal.bands));
+  if (spec) {
+    // Same rule as the effect itself: bass below the cut-off under -24 dB of the mix gets nothing.
+    const cut = params().cutoff, bin = spec.sr / spec.n; let lo = 0, all = 0;
+    for (let k = 1; k <= spec.n / 2; k++) { all += spec.pow[k]; if (k * bin >= 20 && k * bin < cut) lo += spec.pow[k]; }
+    const share = 10 * Math.log10(lo / all + 1e-12);
+    setNote('bass', share < -24 ? `Dieser Song hat kaum Bass unter ${cut} Hz. Phantombass fügt hier nichts hinzu.`
+      : share < -12 ? `Wenig Bass unter ${cut} Hz. Phantombass verstärkt ihn nur leicht.`
+      : `Der Song hat kräftigen Bass unter ${cut} Hz. Phantombass macht ihn auf kleinen Lautsprechern hörbar.`);
+  }
+  const g = state.song.gainDb;
+  setNote('loud', !isFinite(loud.lufs) ? 'Zu leise zum Messen.' : Math.abs(g) < 0.5 ? 'Der Song hat schon die richtige Lautstärke.' :
+    g < 0 ? `Der Song ist laut gemastert und spielt ${num(-g).slice(1)} dB leiser, so laut wie andere Songs.` :
+    `Der Song ist leise und spielt ${num(g).slice(1)} dB lauter.`);
+  await tick0();
+  const info = hfAnalyse(chans, buf.sampleRate);
+  if (!info) { setNote('hf', 'Die Höhen sind vollständig, hier fehlt nichts.'); return; }
+  const kHz = (info.cutHz / 1000).toFixed(1).replace('.', ',');
+  const out = await hfRender(chans, buf.sampleRate, info, p => {
+    if (job === state.job) setNote('hf', `Bei ${kHz} kHz abgeschnitten. Höhen werden ergänzt … ${Math.round(p * 100)} %`);
+    return tick0();
+  });
+  if (job !== state.job) return;  // another file was loaded meanwhile
+  const hb = state.ctx.createBuffer(out.length, buf.length, buf.sampleRate);
+  out.forEach((d, c) => hb.copyToChannel(d, c));
+  state.hfBuffer = hb;
+  setNote('hf', `Die Datei war bei ${kHz} kHz abgeschnitten. Die Höhen darüber sind ergänzt.`);
+  startHf();
+}
+
+// ---- Transport and file ----
 $('play').addEventListener('click', async () => {
   await ensureAudio();
   if (state.ctx.state === 'suspended') await state.ctx.resume();
-  if (state.playing) { state.offset = position(); stopSource(); state.playing = false; renderPlay(); }
+  if (state.playing) pause();
   else start(state.offset >= state.buffer.duration ? 0 : state.offset);
   $('status').textContent = state.playing ? 'Läuft.' : 'Pausiert.';
 });
@@ -580,13 +1052,6 @@ $('seek').addEventListener('input', () => {
   const at = $('seek').value / 1000 * state.buffer.duration;
   if (state.playing) start(at); else state.offset = at;
 });
-$('toggle').addEventListener('click', () => {
-  enabled = !enabled;
-  $('toggle').setAttribute('aria-pressed', String(enabled));
-  $('toggleHint').textContent = enabled ? 'An. Zum Vergleichen ausschalten.' : 'Aus. Du hörst das Original.';
-  pushEnabled();
-});
-
 async function loadFile(file) {
   if (!file) return;
   $('status').textContent = `Lade „${file.name}“ …`;
@@ -594,36 +1059,85 @@ async function loadFile(file) {
   try {
     const buf = await state.ctx.decodeAudioData(await file.arrayBuffer());
     stopSource(); state.playing = false; renderPlay();
-    state.buffer = buf; state.offset = 0; state.hfBuffer = null;
+    state.buffer = buf; state.offset = 0;
     $('name').textContent = file.name;
     $('status').textContent = 'Geladen. Drück auf Abspielen.';
-    refreshTreble(buf);
+    analyseSong(buf);
   } catch (e) {
     $('status').innerHTML = '<span class="error">Diese Datei kann der Browser nicht lesen.</span> MP3, M4A, WAV, FLAC und MP4-Videos funktionieren.';
   }
 }
-async function refreshTreble(buf) {
-  const job = ++state.hfJob;
-  const chans = []; for (let c = 0; c < buf.numberOfChannels; c++) chans.push(buf.getChannelData(c));
-  const info = hfAnalyse(chans, buf.sampleRate);
-  if (!info) { $('status').textContent = 'Geladen. Die Höhen sind vollständig, da fehlt nichts. Drück auf Abspielen.'; return; }
-  const kHz = (info.cutHz / 1000).toFixed(1).replace('.', ',');
-  const out = await hfRender(chans, buf.sampleRate, info, p => {
-    if (job === state.hfJob) $('status').textContent = `Die Datei ist bei ${kHz} kHz abgeschnitten. Höhen werden ergänzt … ${Math.round(p * 100)} %`;
-    return new Promise(r => setTimeout(r, 0));
-  });
-  if (job !== state.hfJob) return;  // another file was loaded meanwhile
-  const hb = state.ctx.createBuffer(out.length, buf.length, buf.sampleRate);
-  out.forEach((d, c) => hb.copyToChannel(d, c));
-  state.hfBuffer = hb;
-  $('status').textContent = `Höhen ab ${kHz} kHz ergänzt. Mit dem Schalter hörst du den Unterschied.`;
-  startHf();
-}
-
 $('file').addEventListener('change', e => loadFile(e.target.files[0]));
 document.addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('drop-active'); });
 document.addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('drop-active'); });
 document.addEventListener('drop', e => { e.preventDefault(); document.body.classList.remove('drop-active'); loadFile(e.dataTransfer.files[0]); });
+
+// ---- Speaker measurement with the microphone ----
+const meas = { stream: null, proc: null, src: null, timer: 0 };
+function stopMeasure() {
+  clearInterval(meas.timer);
+  if (meas.src) { try { meas.src.stop(); } catch (e) {} meas.src = null; }
+  if (meas.proc) { meas.proc.disconnect(); meas.proc = null; }
+  if (meas.stream) { meas.stream.getTracks().forEach(t => t.stop()); meas.stream = null; }
+}
+function renderSpeakerNote() {
+  setNote('spk', speaker
+    ? `Gemessen: dein Lautsprecher spielt ab etwa ${Math.round(speaker.cutoffHz)} Hz. Phantombass setzt dort an, Höhen und Mitten sind ausgeglichen.`
+    : 'Noch nicht gemessen. Einmal messen, dann passt sich der Klang an deinen Lautsprecher an.');
+  $('measureBtn').textContent = speaker ? 'Neu messen' : 'Lautsprecher messen';
+}
+$('measureCancel').addEventListener('click', () => { stopMeasure(); $('measurePanel').hidden = true; });
+$('measureBtn').addEventListener('click', async () => {
+  await ensureAudio();
+  if (state.ctx.state === 'suspended') await state.ctx.resume();
+  if (state.playing) pause();
+  stopMeasure();
+  const panel = $('measurePanel'), text = $('measureText');
+  panel.hidden = false; $('measureBar').style.width = '0%';
+  text.textContent = 'Mikrofon wird geöffnet …';
+  try {
+    // Switch off everything that would change the level: auto gain, noise and echo suppression.
+    meas.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+  } catch (e) {
+    text.innerHTML = 'Das Mikrofon ist hier gesperrt. Öffne die Seite über ihre eigene Adresse, <a href="https://julianschneider3618-beep.github.io/Musik-open/" target="_blank" rel="noopener">julianschneider3618-beep.github.io/Musik-open</a>, und erlaube das Mikrofon.';
+    return;
+  }
+  const ctx = state.ctx, m = new SpeakerCheck(ctx.sampleRate), sig = m.testSignal();
+  const buf = ctx.createBuffer(1, sig.length, ctx.sampleRate); buf.getChannelData(0).set(sig);
+  const rec = new Float32Array(sig.length + Math.floor(0.5 * ctx.sampleRate)); let filled = 0;
+  const startAt = ctx.currentTime + 0.2;
+  meas.proc = ctx.createScriptProcessor(4096, 1, 1);
+  meas.proc.onaudioprocess = ev => {
+    const input = ev.inputBuffer.getChannelData(0);
+    // Keep only samples recorded from the moment playback starts.
+    const skip = Math.max(0, Math.round((startAt - ev.playbackTime) * ctx.sampleRate));
+    for (let i = skip; i < input.length && filled < rec.length; i++) rec[filled++] = input[i];
+  };
+  const mic = ctx.createMediaStreamSource(meas.stream), mute = ctx.createGain(); mute.gain.value = 0;
+  mic.connect(meas.proc); meas.proc.connect(mute); mute.connect(ctx.destination);
+  // Straight to the speaker, past all effects.
+  const src = ctx.createBufferSource(); src.buffer = buf; src.connect(ctx.destination); src.start(startAt); meas.src = src;
+  text.textContent = 'Bitte leise sein. Das Rauschen wandert von tief nach hoch, etwa 15 Sekunden.';
+  meas.timer = setInterval(() => {
+    $('measureBar').style.width = `${Math.min(100, Math.round(filled / rec.length * 100))}%`;
+    if (filled < rec.length) return;
+    stopMeasure();
+    const r = m.analyze(rec);
+    if (!r.ok) {
+      text.textContent = 'Das Mikrofon hat das Testsignal nicht gut genug gehört. Mach lauter oder halte das Handy näher an den Lautsprecher und versuch es nochmal.';
+      return;
+    }
+    speaker = { bands: r.bands, cutoffHz: r.cutoffHz };
+    prefs.spk = true; prefs.all = true; save();
+    pushParams({ spkBands: r.bands }); renderSwitches(); renderSpeakerNote();
+    text.textContent = 'Fertig. Die Korrektur ist eingeschaltet.' + (r.latencySeconds > 0.1 ? ` Verzögerung ${Math.round(r.latencySeconds * 1000)} ms, wahrscheinlich Bluetooth.` : '');
+  }, 200);
+});
+
+renderSwitches(); renderSpeakerNote();
+setNote('bass', 'Obertöne lassen tiefe Töne auch auf kleinen Lautsprechern hörbar werden.');
+setNote('width', 'Räumlicher auf Laptops und Boxen mit zwei Lautsprechern. Bass und Stimme bleiben in der Mitte.');
+for (const k of ['bal', 'loud', 'hf']) setNote(k, 'Wird beim Laden eines Songs analysiert.');
 
 (function tick() {
   if (state.buffer && state.ctx) {
