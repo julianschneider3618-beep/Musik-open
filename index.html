@@ -1,0 +1,851 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root { color-scheme: light; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body { margin: 0; font: 14px system-ui, -apple-system, sans-serif; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<title>Phantombass Labor</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a single hardware-style console — transport + A/B switch on top, spectrum as the centrepiece, controls beneath, explanation last. */
+:root {
+  --bg: #e8eaee;
+  --panel: #f6f7f9;
+  --ink: #161b26;
+  --muted: #5b6475;
+  --line: #c9ced8;
+  --accent: #d9480f;      /* signal orange: the generated harmonics */
+  --accent-ink: #ffffff;
+  --cool: #2f5fb3;        /* the original bass */
+  --zone: rgba(22, 27, 38, 0.06);
+  --font-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12151c; --panel: #1b1f29; --ink: #e9ecf2; --muted: #9aa3b5; --line: #2e3443;
+    --accent: #ff7a3d; --accent-ink: #1a0d05; --cool: #7ea6f2; --zone: rgba(233, 236, 242, 0.05);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12151c; --panel: #1b1f29; --ink: #e9ecf2; --muted: #9aa3b5; --line: #2e3443;
+  --accent: #ff7a3d; --accent-ink: #1a0d05; --cool: #7ea6f2; --zone: rgba(233, 236, 242, 0.05);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--font-body); font-size: 15px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 48px;
+}
+.wrap { max-width: 920px; margin: 0 auto; display: grid; gap: 20px; }
+
+header { display: grid; gap: 6px; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+h1 { font-family: var(--font-display); font-weight: 800; font-size: clamp(30px, 6vw, 46px); line-height: 1.05; margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+.lede { margin: 0; color: var(--muted); max-width: 62ch; }
+
+.console { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: grid; gap: 18px; }
+
+.transport { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.track { flex: 1 1 220px; min-width: 0; display: grid; gap: 6px; }
+.track-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.track-time { font-family: var(--font-mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+button, .filebtn {
+  font: inherit; font-weight: 600; cursor: pointer;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+  border-radius: 10px; padding: 10px 14px; min-height: 44px;
+  display: inline-flex; align-items: center; gap: 8px;
+}
+button:focus-visible, .filebtn:focus-within, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.play { width: 52px; height: 52px; padding: 0; justify-content: center; border-radius: 50%; background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.play svg { width: 20px; height: 20px; fill: currentColor; }
+.filebtn input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.filebtn { position: relative; }
+
+/* The A/B switch is the one loud element on the page. */
+.ab { display: inline-grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--bg); }
+.ab button { border: 0; border-radius: 0; min-width: 96px; justify-content: center; background: transparent; color: var(--muted); }
+.ab button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.ab button.on[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+
+.scope { position: relative; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); overflow: hidden; }
+canvas { display: block; width: 100%; height: 240px; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--muted); font-family: var(--font-mono); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+
+.controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
+.ctl { display: grid; gap: 6px; min-width: 0; }
+.ctl label { font-weight: 600; display: flex; justify-content: space-between; gap: 8px; }
+.ctl output { font-family: var(--font-mono); font-weight: 500; color: var(--accent); font-variant-numeric: tabular-nums; }
+.ctl small { color: var(--muted); font-size: 13px; }
+input[type="range"] { width: 100%; accent-color: var(--accent); min-height: 28px; }
+.check { display: flex; gap: 10px; align-items: flex-start; }
+.check input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--accent); flex: none; }
+.check span { display: grid; gap: 2px; }
+
+.presets { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.presets-label { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-right: 4px; }
+.presets button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.presets .test { border-style: dashed; }
+.speaker-test { border: 1px solid var(--accent); border-radius: 10px; padding: 14px; display: grid; gap: 10px; }
+.speaker-test p { margin: 0; max-width: 62ch; }
+.test-readout { font-family: var(--font-mono); font-size: 34px; font-weight: 500; color: var(--accent); font-variant-numeric: tabular-nums; }
+.measure-progress { flex: none; width: 100%; max-width: 360px; }
+.test-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.pitch { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-family: var(--font-mono); font-size: 13px; color: var(--muted); }
+.pitch-note { color: var(--ink); font-weight: 500; min-width: 15ch; font-variant-numeric: tabular-nums; }
+.pitch-meter { flex: 0 0 120px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.pitch-meter i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.15s; }
+.seek { width: 100%; accent-color: var(--ink); }
+.hint { font-size: 13px; color: var(--muted); margin: 0; }
+.drop-active .console { outline: 2px dashed var(--accent); outline-offset: 4px; }
+
+.explain { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; }
+.explain h2 { grid-column: 1 / -1; font-family: var(--font-display); font-weight: 600; font-size: 22px; margin: 8px 0 0; }
+.step { display: grid; gap: 4px; align-content: start; min-width: 0; }
+.step b { font-family: var(--font-mono); font-size: 12px; color: var(--accent); letter-spacing: 0.06em; }
+.step p { margin: 0; color: var(--muted); }
+.step strong { color: var(--ink); font-weight: 600; }
+.error { color: var(--accent); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap" id="app">
+  <header>
+    <span class="eyebrow">Prototyp · Schritt 1</span>
+    <h1>Phantombass Labor</h1>
+    <p class="lede">Hör dir an, wie Obertöne einen Bass vortäuschen, den der Lautsprecher gar nicht spielen kann. Lade einen Song oder ein Video (die Tonspur wird herausgezogen) oder nimm das Beispiel, schalte zwischen Original und Effekt um und vergleiche.</p>
+  </header>
+
+  <section class="console" aria-label="Player">
+    <div class="transport">
+      <button class="play" id="play" aria-label="Abspielen">
+        <svg viewBox="0 0 24 24" id="playIcon"><path d="M7 4.5v15l13-7.5z"/></svg>
+      </button>
+      <div class="track">
+        <div class="track-name" id="trackName">Beispiel: Basslinie bei 41 bis 55 Hz</div>
+        <input type="range" class="seek" id="seek" min="0" max="1000" value="0" aria-label="Position">
+        <div class="track-time" id="trackTime">0:00 / 0:16</div>
+      </div>
+      <label class="filebtn">Song oder Video laden
+        <input type="file" id="file">
+      </label>
+    </div>
+
+    <div class="transport">
+      <div class="ab" role="group" aria-label="Effekt vergleichen">
+        <button id="abOff" aria-pressed="false">Original</button>
+        <button id="abOn" class="on" aria-pressed="true">Phantombass</button>
+      </div>
+      <p class="hint">Taste <kbd>B</kbd> schaltet um. Am besten mit Kopfhörern und eingeschalteter Lautsprecher-Simulation.</p>
+    </div>
+
+    <div class="scope">
+      <canvas id="spectrum" aria-label="Frequenzspektrum 20 Hz bis 2 kHz"></canvas>
+    </div>
+    <div class="pitch">
+      <span class="pitch-label">Erkannter Basston</span>
+      <span class="pitch-note" id="pitchNote">–</span>
+      <span class="pitch-meter" aria-hidden="true"><i id="pitchBar"></i></span>
+      <span class="pitch-mode" id="pitchState">Wartet auf Musik</span>
+    </div>
+    <div class="legend">
+      <span><i style="background: var(--zone); border: 1px solid var(--line)"></i>Bereich, den der Lautsprecher nicht spielt</span>
+      <span><i style="background: var(--accent)"></i>Was aus dem Lautsprecher kommt</span>
+    </div>
+
+    <div class="presets" role="group" aria-label="Lautsprecher wählen">
+      <span class="presets-label">Lautsprecher</span>
+      <button data-cutoff="180">Handy</button>
+      <button data-cutoff="140">Laptop</button>
+      <button data-cutoff="100" aria-pressed="true">Kleine Box</button>
+      <button data-cutoff="70">Große Box</button>
+      <button data-cutoff="40">Soundbox</button>
+      <button id="measureBtn" class="test">Automatisch messen</button>
+      <button id="testBtn" class="test">Nach Gehör testen</button>
+    </div>
+
+    <div class="speaker-test" id="measurePanel" hidden>
+      <div class="test-readout" id="measureReadout">Messung läuft</div>
+      <p id="measureText">Stell die Lautstärke so ein, wie du normalerweise hörst, und leg das Handy etwa 30 cm vor den Lautsprecher. Die Messung dauert knapp 20 Sekunden.</p>
+      <div class="pitch-meter measure-progress" aria-hidden="true"><i id="measureBar"></i></div>
+      <div class="test-actions"><button id="measureCancel">Abbrechen</button></div>
+    </div>
+
+    <div class="speaker-test" id="speakerTest" hidden>
+      <div class="test-readout"><span id="testFreq">250</span> Hz</div>
+      <p>Ein Ton läuft langsam von hoch nach tief. Spiel ihn über den <strong>echten Lautsprecher</strong>, nicht über Kopfhörer. Drück den Knopf, sobald du den Ton nicht mehr hörst.</p>
+      <div class="test-actions">
+        <button id="testStop" class="primary">Jetzt höre ich nichts mehr</button>
+        <button id="testCancel">Abbrechen</button>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="ctl">
+        <label for="cutoff">Lautsprecher-Grenze <output id="cutoffOut">100 Hz</output></label>
+        <input type="range" id="cutoff" min="30" max="250" step="5" value="100">
+        <small>Wähl oben deinen Lautsprecher oder miss die Grenze mit dem Test.</small>
+      </div>
+      <div class="ctl">
+        <label for="amount">Intensität <output id="amountOut">100 %</output></label>
+        <input type="range" id="amount" min="0" max="2" step="0.05" value="1">
+        <small>Mit Automatik: 100 % klingt etwa so laut wie der fehlende Bass.</small>
+      </div>
+      <div class="ctl">
+        <label for="tone">Klangfarbe <output id="toneOut">ausgewogen</output></label>
+        <input type="range" id="tone" min="0" max="1" step="0.05" value="0.5">
+        <small>Warm betont den 2. Oberton, knackig den 3. Knackig passt zu Kicks, warm zu Basslinien.</small>
+      </div>
+      <div class="ctl">
+        <label class="check"><input type="checkbox" id="pitchMode" checked>
+          <span>Tonhöhenerkennung<small>Gemischtes Verfahren: Bei klaren Basstönen entstehen saubere Obertöne ohne Verzerrung, bei Drums arbeitet das alte Verfahren.</small></span>
+        </label>
+        <label class="check"><input type="checkbox" id="auto" checked>
+          <span>Automatische Lautstärke<small>Misst laufend, wie viel Bass fehlt, und passt die Obertöne daran an.</small></span>
+        </label>
+        <label class="check"><input type="checkbox" id="sim" checked>
+          <span>Lautsprecher simulieren<small>Nur für Kopfhörer. Schneidet alles unter der Grenze weg, so wie ein kleiner Lautsprecher.</small></span>
+        </label>
+        <label class="check"><input type="checkbox" id="keep">
+          <span>Original-Bass behalten<small>Für Lautsprecher, die tiefe Töne teilweise noch schaffen.</small></span>
+        </label>
+      </div>
+    </div>
+    <p class="hint" id="status">Bereit. Drück auf Abspielen.</p>
+  </section>
+
+  <section class="explain">
+    <h2>So funktioniert der Effekt</h2>
+    <div class="step"><b>1 · BASS ABTRENNEN</b><p>Alles unter der <strong>Lautsprecher-Grenze</strong> wird herausgefiltert. Diese Töne könnte der Lautsprecher sowieso nicht abspielen.</p></div>
+    <div class="step"><b>2 · TONHÖHE ERKENNEN</b><p>Ein <strong>Tonhöhen-Detektor</strong> misst alle 10 ms, welcher Basston gerade spielt. Bei einem klaren Ton entstehen daraus saubere Obertöne, immer oberhalb der Lautsprecher-Grenze, egal wie tief der Ton ist. Bei Drums ohne klare Tonhöhe übernimmt ein zweites Verfahren, das die Obertöne direkt aus dem Signal formt.</p></div>
+    <div class="step"><b>3 · LAUTSTÄRKE ANGLEICHEN</b><p>Die <strong>Automatik</strong> misst laufend, wie viel Bass gerade fehlt, und stellt die Obertöne so ein, dass sie ungefähr gleich laut wirken. Leise Stellen bleiben dadurch leise, laute Bässe werden nicht übersteuert.</p></div>
+    <div class="step"><b>4 · DAS OHR ERGÄNZT</b><p>Das Gehirn erkennt das Muster der Obertöne und <strong>hört den tiefen Grundton mit</strong>, obwohl er physikalisch fehlt. Das nennt man „Residualton“ oder „missing fundamental“.</p></div>
+  </section>
+</div>
+
+<script>
+// ---- DSP: same algorithm as core/src (VirtualBass.cpp, PitchTracker.cpp) ----
+class Biquad {
+  constructor() { this.b0 = 1; this.b1 = 0; this.b2 = 0; this.a1 = 0; this.a2 = 0; this.z1 = 0; this.z2 = 0; }
+  set(sr, f, q, hp) {
+    const w = 2 * Math.PI * f / sr, c = Math.cos(w), al = Math.sin(w) / (2 * q), a0 = 1 + al;
+    if (hp) { this.b0 = (1 + c) / 2 / a0; this.b1 = -(1 + c) / a0; }
+    else { this.b0 = (1 - c) / 2 / a0; this.b1 = (1 - c) / a0; }
+    this.b2 = this.b0; this.a1 = -2 * c / a0; this.a2 = (1 - al) / a0;
+  }
+  process(x) {
+    const y = this.b0 * x + this.z1;
+    this.z1 = this.b1 * x - this.a1 * y + this.z2;
+    this.z2 = this.b2 * x - this.a2 * y;
+    return y;
+  }
+}
+
+// YIN pitch tracker on the bass band, decimated to ~3 kHz, every ~10 ms on a ~50 ms window.
+class PitchTracker {
+  constructor(sr) {
+    this.dec = Math.max(1, Math.round(sr / 3000)); this.rate = sr / this.dec;
+    this.win = Math.ceil(0.05 * this.rate); this.lagCap = Math.ceil(this.rate / 25);
+    this.hop = Math.max(1, Math.ceil(0.01 * this.rate));
+    let size = 1; while (size < this.win + this.lagCap + 1) size <<= 1;
+    this.ring = new Float32Array(size); this.mask = size - 1;
+    this.frame = new Float32Array(this.win + this.lagCap + 1); this.diff = new Float32Array(this.lagCap + 1);
+    this.pos = 0; this.dc = 0; this.hc = 0; this.voiced = false; this.freq = 0; this.aper = 1;
+    this.setRange(25, 250);
+  }
+  setRange(minHz, maxHz) {
+    this.minLag = Math.max(2, Math.floor(this.rate / Math.max(maxHz, minHz + 1)));
+    this.maxLag = Math.min(this.lagCap, Math.ceil(this.rate / Math.max(minHz, 25)));
+  }
+  push(x) {
+    if (++this.dc < this.dec) return;
+    this.dc = 0; this.ring[this.pos] = x; this.pos = (this.pos + 1) & this.mask;
+    if (++this.hc >= this.hop) { this.hc = 0; this.analyze(); }
+  }
+  analyze() {
+    const fr = this.frame, n = fr.length, d = this.diff, W = this.win, base = n - W;
+    let p = (this.pos - n) & this.mask, energy = 0;
+    for (let i = 0; i < n; i++) { fr[i] = this.ring[p]; p = (p + 1) & this.mask; }
+    for (let i = base; i < n; i++) energy += fr[i] * fr[i];
+    if (Math.sqrt(energy / W) < 1e-4) { this.voiced = false; this.aper = 1; return; }
+    d[0] = 1; let running = 0;
+    for (let tau = 1; tau <= this.maxLag; tau++) {
+      let s = 0;
+      for (let j = 0; j < W; j++) { const delta = fr[base + j] - fr[base + j - tau]; s += delta * delta; }
+      running += s; d[tau] = running > 0 ? s * tau / running : 1;
+    }
+    let best = -1;
+    for (let tau = this.minLag; tau <= this.maxLag; tau++) {
+      if (d[tau] < 0.2) { while (tau + 1 <= this.maxLag && d[tau + 1] < d[tau]) tau++; best = tau; break; }
+    }
+    if (best < 0) {
+      let m = 1; for (let tau = this.minLag; tau <= this.maxLag; tau++) m = Math.min(m, d[tau]);
+      this.voiced = false; this.aper = m; return;
+    }
+    let lag = best;
+    if (best > this.minLag && best < this.maxLag) {
+      const a = d[best - 1], b = d[best], c = d[best + 1], den = a - 2 * b + c;
+      if (den > 0) lag += 0.5 * (a - c) / den;
+    }
+    this.voiced = true; this.aper = d[best]; this.freq = this.rate / lag;
+  }
+}
+
+class VirtualBass {
+  constructor(sr) {
+    this.sr = sr;
+    const lr4 = () => [new Biquad(), new Biquad()];
+    this.dryL = lr4(); this.dryR = lr4(); this.bassLp = lr4(); this.harmHp = lr4();
+    this.subsonic = new Biquad(); this.harmLp = lr4();
+    const tc = s => Math.exp(-1 / (s * sr));
+    this.rel = tc(0.15); this.smooth = tc(0.02); this.powC = tc(0.25);
+    this.glideC = tc(0.01); this.confC = tc(0.03); this.ampC = tc(0.015);
+    this.env = 0; this.wet = 1; this.dryHp = 1; this.bassPow = 0; this.harmPow = 0; this.autoGain = 1;
+    this.tracker = new PitchTracker(sr);
+    this.phase = 0; this.f0 = 0; this.conf = 0; this.ms = 0; this.gains = new Float32Array(17); this.gainsF0 = -1;
+    this.p = { cutoff: 120, amount: 1, tone: 0.5, autoLevel: true, pitchTracking: true, enabled: true, removeBass: true };
+    this.h2 = 0.55; this.h3 = 0.5; this.h4 = 0.15;
+    this.update();
+  }
+  setParams(p) {
+    const oldC = this.p.cutoff, oldT = this.p.tone;
+    Object.assign(this.p, p);
+    const t = Math.max(0, Math.min(1, this.p.tone));
+    this.h2 = 0.8 - 0.5 * t; this.h3 = 0.3 + 0.4 * t; this.h4 = 0.2 - 0.1 * t;
+    if (this.p.cutoff !== oldC) this.update();
+    if (this.p.cutoff !== oldC || this.p.tone !== oldT) this.gainsF0 = -1;
+  }
+  update() {
+    const sr = this.sr, fc = this.p.cutoff, Q = Math.SQRT1_2;
+    for (const f of [...this.dryL, ...this.dryR, ...this.harmHp]) f.set(sr, fc, Q, true);
+    for (const f of this.bassLp) f.set(sr, fc, Q, false);
+    this.subsonic.set(sr, Math.min(25, 0.6 * fc), Q, true);
+    for (const f of this.harmLp) f.set(sr, Math.min(fc * 3, sr * 0.45), Q, false);
+    this.tracker.setRange(25, fc);
+  }
+  // Harmonic k*f0: fades in just below the cutoff, falls off upwards (steeper when warm), gone by 3 fc.
+  updateGains() {
+    const fc = this.p.cutoff, tilt = 1.6 - 1.2 * this.p.tone, g = this.gains;
+    const ss = x => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+    let norm = 0;
+    for (let k = 2; k <= 16; k++) {
+      const f = k * this.f0;
+      g[k] = f < 3 * fc && f < this.sr * 0.45
+        ? ss((f - 0.85 * fc) / (0.35 * fc)) * ss((3 * fc - f) / (0.6 * fc)) * Math.pow(fc / f, tilt) : 0;
+      norm += g[k] * g[k];
+    }
+    if (norm > 0) { const s = 1 / Math.sqrt(norm); for (let k = 2; k <= 16; k++) g[k] *= s; }
+    this.gainsF0 = this.f0;
+  }
+  synth() {
+    if (this.f0 <= 0) return 0;
+    if (Math.abs(this.f0 - this.gainsF0) > 0.002 * this.f0) this.updateGains();
+    this.phase += 2 * Math.PI * this.f0 / this.sr;
+    if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
+    // sin(k phase) by the recurrence s_k = 2 cos(phase) s_(k-1) - s_(k-2).
+    const c2 = 2 * Math.cos(this.phase), g = this.gains;
+    let prev = 0, cur = Math.sin(this.phase), sum = 0;
+    for (let k = 2; k <= 16; k++) { const next = c2 * cur - prev; prev = cur; cur = next; sum += g[k] * cur; }
+    return Math.sqrt(2 * this.ms) * 0.6 * sum;
+  }
+  process(L, R, n) {
+    const p = this.p, wetT = p.enabled ? p.amount : 0, hpT = p.enabled && p.removeBass ? 1 : 0;
+    const [dl1, dl2] = this.dryL, [dr1, dr2] = this.dryR, [bl1, bl2] = this.bassLp, [hh1, hh2] = this.harmHp;
+    const tr = this.tracker;
+    for (let i = 0; i < n; i++) {
+      const l = L[i], r = R ? R[i] : l;
+      const bass = bl2.process(bl1.process(this.subsonic.process(0.5 * (l + r))));
+      // Nonlinear generator. Instant attack keeps x inside [-1, 1], so the polynomials never clip.
+      const mag = Math.abs(bass);
+      this.env = mag > this.env ? mag : this.rel * this.env + (1 - this.rel) * mag;
+      let h = 0;
+      if (this.env > 1e-6) {
+        const x = Math.max(-1, Math.min(1, bass / this.env)), x2 = x * x;
+        h = this.env * (this.h2 * (2 * x2 - 1) + this.h3 * x * (4 * x2 - 3) + this.h4 * (8 * x2 * x2 - 8 * x2 + 1));
+      }
+      // Hybrid: crossfade to clean synthesised harmonics while the bass has a clear pitch.
+      if (p.pitchTracking) {
+        tr.push(bass);
+        this.ms = this.ampC * this.ms + (1 - this.ampC) * bass * bass;
+        const target = tr.voiced ? Math.max(0, Math.min(1, (0.2 - tr.aper) / 0.15)) : 0;
+        this.conf = this.confC * this.conf + (1 - this.confC) * target;
+        if (tr.voiced) {
+          const f = tr.freq;
+          this.f0 = (this.f0 <= 0 || Math.abs(f - this.f0) > 0.06 * this.f0) ? f : this.glideC * this.f0 + (1 - this.glideC) * f;
+        }
+        if (this.conf > 1e-3) h += this.conf * (this.synth() - h);
+      } else {
+        this.conf = 0;
+      }
+      h = this.harmLp[1].process(this.harmLp[0].process(hh2.process(hh1.process(h))));
+      let gain = 1;
+      if (p.autoLevel) {
+        // Harmonics well below the removed bass energy sound about as loud (ear is more sensitive at 100-300 Hz).
+        this.bassPow = this.powC * this.bassPow + (1 - this.powC) * bass * bass;
+        this.harmPow = this.powC * this.harmPow + (1 - this.powC) * h * h;
+        if (this.harmPow > 1e-12) this.autoGain = Math.max(0, Math.min(4, 0.5 * Math.sqrt(this.bassPow / this.harmPow)));
+        gain = this.autoGain;
+      }
+      this.wet = this.smooth * this.wet + (1 - this.smooth) * wetT * gain;
+      this.dryHp = this.smooth * this.dryHp + (1 - this.smooth) * hpT;
+      const hl = dl2.process(dl1.process(l)), hr = dr2.process(dr1.process(r)), add = this.wet * h;
+      L[i] = l + this.dryHp * (hl - l) + add;
+      if (R) R[i] = r + this.dryHp * (hr - r) + add;
+    }
+  }
+  pitchInfo() { return { f0: this.conf > 0.05 ? this.f0 : 0, conf: this.conf }; }
+}
+
+const WORKLET_SRC = `${Biquad.toString()}\n${PitchTracker.toString()}\n${VirtualBass.toString()}\n
+class VBProcessor extends AudioWorkletProcessor {
+  constructor() { super(); this.vb = new VirtualBass(sampleRate); this.port.onmessage = e => this.vb.setParams(e.data); this.n = 0; }
+  process(inputs, outputs) {
+    const inp = inputs[0], out = outputs[0];
+    if (!inp.length) return true;
+    const L = out[0], R = out[1];
+    L.set(inp[0]);
+    if (R) R.set(inp[1] || inp[0]);
+    this.vb.process(L, R || null, L.length);
+    if (++this.n >= 16) { this.n = 0; this.port.postMessage(this.vb.pitchInfo()); }
+    return true;
+  }
+}
+registerProcessor('virtual-bass', VBProcessor);`;
+
+// ---- Example track, synthesised so the page works without an upload ----
+function makeExample(ctx) {
+  const sr = ctx.sampleRate, secs = 16, n = sr * secs;
+  const buf = ctx.createBuffer(2, n, sr), L = buf.getChannelData(0), R = buf.getChannelData(1);
+  const beat = 60 / 112, bassNotes = [41.2, 41.2, 55, 49, 41.2, 41.2, 61.7, 55];
+  const chords = [[220, 261.6, 329.6], [196, 246.9, 293.7], [174.6, 220, 261.6], [196, 246.9, 293.7]];
+  let seed = 1; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647 * 2 - 1;
+  let hatState = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / sr, b = t / beat, step = Math.floor(b), ph = (b - step) * beat;
+    // Bass: one note per beat, sine with a touch of 2nd harmonic.
+    const f = bassNotes[step % bassNotes.length], benv = Math.exp(-ph * 2.5) * Math.min(1, ph * 200);
+    let s = 0.42 * benv * (Math.sin(2 * Math.PI * f * t) + 0.08 * Math.sin(4 * Math.PI * f * t));
+    // Kick on every beat: pitch sweep 110 -> 45 Hz.
+    const kphase = 2 * Math.PI * (45 * ph + 65 * (1 - Math.exp(-ph * 30)) / 30);
+    s += 0.5 * Math.exp(-ph * 9) * Math.sin(kphase);
+    // Hi-hat on off-beats.
+    const hp = ((b + 0.5) % 1) * beat; const noise = rnd(); const hpNoise = noise - hatState; hatState = noise;
+    s += 0.05 * Math.exp(-hp * 40) * hpNoise;
+    // Soft chord pad.
+    const ch = chords[Math.floor(b / 4) % chords.length];
+    let pad = 0; for (const cf of ch) pad += Math.sin(2 * Math.PI * cf * t) + 0.3 * Math.sin(4 * Math.PI * cf * t);
+    const padL = s + 0.035 * pad, padR = s + 0.035 * pad * 0.9;
+    const fade = Math.min(1, t * 4, (secs - t) * 4);
+    L[i] = padL * fade; R[i] = padR * fade;
+  }
+  return buf;
+}
+
+// ---- App ----
+const $ = id => document.getElementById(id);
+const state = { ctx: null, node: null, fallbackVb: null, buffer: null, source: null, playing: false, startedAt: 0, offset: 0, name: 'Beispiel: Basslinie bei 41 bis 55 Hz' };
+const params = { cutoff: 100, amount: 1, tone: 0.5, autoLevel: true, pitchTracking: true, enabled: true, removeBass: true };
+let pitch = { f0: 0, conf: 0 };
+let simOn = true;
+
+async function ensureAudio() {
+  if (state.ctx) return;
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  state.ctx = ctx;
+  try {
+    const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: 'application/javascript' }));
+    await ctx.audioWorklet.addModule(url);
+    state.node = new AudioWorkletNode(ctx, 'virtual-bass', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
+    state.node.port.onmessage = e => { pitch = e.data; };
+  } catch (e) {
+    // Fallback for browsers or frames that refuse worklets.
+    const sp = ctx.createScriptProcessor(1024, 2, 2), vb = new VirtualBass(ctx.sampleRate);
+    sp.onaudioprocess = ev => {
+      const ib = ev.inputBuffer, ob = ev.outputBuffer, L = ob.getChannelData(0), R = ob.getChannelData(1);
+      L.set(ib.getChannelData(0)); R.set(ib.numberOfChannels > 1 ? ib.getChannelData(1) : ib.getChannelData(0));
+      vb.process(L, R, L.length);
+      pitch = vb.pitchInfo();
+    };
+    state.node = sp; state.fallbackVb = vb;
+  }
+  // Speaker simulation: 4th-order high-pass at the speaker limit.
+  state.sim1 = ctx.createBiquadFilter(); state.sim2 = ctx.createBiquadFilter();
+  for (const f of [state.sim1, state.sim2]) { f.type = 'highpass'; f.Q.value = Math.SQRT1_2; }
+  state.analyser = ctx.createAnalyser(); state.analyser.fftSize = 16384; state.analyser.smoothingTimeConstant = 0.75;
+  state.limiter = ctx.createDynamicsCompressor();
+  state.limiter.threshold.value = -1; state.limiter.knee.value = 0; state.limiter.ratio.value = 20;
+  state.limiter.attack.value = 0.002; state.limiter.release.value = 0.1;
+  state.out = ctx.createGain(); state.out.gain.value = 1;
+  // Headroom so the added harmonics never drive the limiter; same for Original and Phantombass.
+  state.pre = ctx.createGain(); state.pre.gain.value = 0.6; state.pre.connect(state.node);
+  state.node.connect(state.sim1); state.sim1.connect(state.sim2); state.sim2.connect(state.analyser);
+  state.analyser.connect(state.limiter); state.limiter.connect(state.out); state.out.connect(ctx.destination);
+  if (!state.buffer) state.buffer = makeExample(ctx);
+  pushParams();
+}
+
+function pushParams() {
+  if (!state.ctx) return;
+  if (state.fallbackVb) state.fallbackVb.setParams(params); else state.node.port.postMessage(params);
+  const f = simOn ? params.cutoff : 5;
+  for (const filt of [state.sim1, state.sim2]) filt.frequency.setTargetAtTime(f, state.ctx.currentTime, 0.02);
+}
+
+function position() {
+  if (!state.buffer) return 0;
+  return state.playing ? Math.min(state.buffer.duration, state.offset + state.ctx.currentTime - state.startedAt) : state.offset;
+}
+
+function start(at) {
+  stopSource();
+  const src = state.ctx.createBufferSource();
+  src.buffer = state.buffer; src.connect(state.pre);
+  src.onended = () => { if (state.source === src) { state.playing = false; state.offset = 0; renderPlay(); } };
+  state.offset = at; state.startedAt = state.ctx.currentTime;
+  src.start(0, at); state.source = src; state.playing = true; renderPlay();
+}
+function stopSource() {
+  if (state.source) { const s = state.source; state.source = null; try { s.stop(); } catch (e) {} s.disconnect(); }
+}
+
+function renderPlay() {
+  $('playIcon').innerHTML = state.playing ? '<path d="M6 4.5h4.5v15H6zM13.5 4.5H18v15h-4.5z"/>' : '<path d="M7 4.5v15l13-7.5z"/>';
+  $('play').setAttribute('aria-label', state.playing ? 'Pause' : 'Abspielen');
+}
+
+const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+$('play').addEventListener('click', async () => {
+  await ensureAudio();
+  if (state.ctx.state === 'suspended') await state.ctx.resume();
+  if (state.playing) { state.offset = position(); stopSource(); state.playing = false; renderPlay(); }
+  else start(state.offset >= state.buffer.duration ? 0 : state.offset);
+  $('status').textContent = state.playing ? 'Läuft. Schalte zwischen Original und Phantombass um.' : 'Pausiert.';
+});
+
+$('seek').addEventListener('input', () => {
+  if (!state.buffer) return;
+  const at = $('seek').value / 1000 * state.buffer.duration;
+  if (state.playing) start(at); else state.offset = at;
+});
+
+function setEnabled(on) {
+  params.enabled = on;
+  $('abOn').setAttribute('aria-pressed', String(on));
+  $('abOff').setAttribute('aria-pressed', String(!on));
+  pushParams();
+}
+$('abOn').addEventListener('click', () => setEnabled(true));
+$('abOff').addEventListener('click', () => setEnabled(false));
+document.addEventListener('keydown', e => {
+  if ((e.key === 'b' || e.key === 'B') && !e.target.closest('input[type="file"]')) setEnabled(!params.enabled);
+});
+
+function setCutoff(hz) {
+  params.cutoff = hz; $('cutoff').value = hz; $('cutoffOut').textContent = `${hz} Hz`;
+  for (const b of document.querySelectorAll('[data-cutoff]')) b.setAttribute('aria-pressed', String(+b.dataset.cutoff === hz));
+  pushParams();
+}
+$('cutoff').addEventListener('input', e => setCutoff(+e.target.value));
+for (const b of document.querySelectorAll('[data-cutoff]')) b.addEventListener('click', () => setCutoff(+b.dataset.cutoff));
+$('amount').addEventListener('input', e => { params.amount = +e.target.value; $('amountOut').textContent = `${Math.round(params.amount * 100)} %`; pushParams(); });
+$('tone').addEventListener('input', e => {
+  params.tone = +e.target.value;
+  $('toneOut').textContent = params.tone < 0.35 ? 'warm' : params.tone > 0.65 ? 'knackig' : 'ausgewogen';
+  pushParams();
+});
+$('auto').addEventListener('change', e => { params.autoLevel = e.target.checked; pushParams(); });
+$('pitchMode').addEventListener('change', e => { params.pitchTracking = e.target.checked; pushParams(); });
+
+// ---- Speaker measurement: same as core/src/SpeakerMeasurement.cpp ----
+// Stepped tones 20-400 Hz over a constant 1 kHz reference. Each tone is read relative to the
+// reference in the same window, so microphone auto gain and playback volume cancel out.
+class SpeakerMeasurement {
+  constructor(sr) {
+    this.sr = sr; this.refHz = 1000; this.preroll = 1.0; this.step = 0.7; this.maxLatency = 0.4;
+    this.freqs = []; for (let i = 0; i < 24; i++) this.freqs.push(20 * Math.pow(400 / 20, i / 23));
+  }
+  static toneLevel(x, start, length, freq, sr) {
+    if (start >= x.length) return 0;
+    length = Math.min(length, x.length - start);
+    if (length < 16) return 0;
+    const w = 2 * Math.PI * freq / sr; let re = 0, im = 0, ws = 0;
+    for (let i = 0; i < length; i++) {
+      const hann = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (length - 1)), v = x[start + i] * hann;
+      re += v * Math.cos(w * i); im += v * Math.sin(w * i); ws += hann;
+    }
+    return 2 * Math.hypot(re, im) / ws;
+  }
+  testSignal() {
+    const sr = this.sr, pre = Math.floor(this.preroll * sr), step = Math.floor(this.step * sr);
+    const fade = Math.floor(0.01 * sr), out = new Float32Array(pre + step * this.freqs.length + Math.floor(this.maxLatency * sr));
+    let ph = 0;
+    this.freqs.forEach((f, s) => {
+      const inc = 2 * Math.PI * f / sr;
+      for (let i = 0; i < step; i++) { out[pre + s * step + i] = 0.3 * Math.min(1, i / fade, (step - i) / fade) * Math.sin(ph); ph += inc; }
+    });
+    for (let i = pre; i < out.length; i++) {
+      out[i] += 0.1 * Math.min(1, (i - pre) / fade, (out.length - i) / fade) * Math.sin(2 * Math.PI * this.refHz * (i - pre) / sr);
+    }
+    return out;
+  }
+  analyze(rec) {
+    const sr = this.sr, T = SpeakerMeasurement.toneLevel, NOT = -100, LIMIT = -6;
+    const pre = Math.floor(this.preroll * sr), step = Math.floor(this.step * sr), len = Math.floor(0.3 * sr);
+    const res = { ok: false, cutoffHz: 0, latencySeconds: 0, frequencies: this.freqs, levelsDb: [] };
+    if (rec.length < pre + step * this.freqs.length) return res;
+    const frame = Math.floor(0.01 * sr);
+    let refNoise = 0;
+    for (let p = Math.floor(0.1 * sr); p + 2 * frame < pre - frame; p += frame) refNoise = Math.max(refNoise, T(rec, p, 2 * frame, this.refHz, sr));
+    const threshold = Math.max(refNoise * 4, 1e-5);
+    let latency = -1;
+    for (let p = pre - frame; p + 2 * frame < pre + Math.floor(this.maxLatency * sr); p += frame / 2) {
+      if (T(rec, p, 2 * frame, this.refHz, sr) > threshold) { latency = Math.max(0, (p + frame - pre) / sr); break; }
+    }
+    if (latency < 0) return res;
+    res.latencySeconds = latency;
+    const lat = Math.floor(latency * sr);
+    const rel = this.freqs.map((f, s) => {
+      const start = pre + s * step + lat + Math.floor(0.3 * sr);
+      const test = T(rec, start, len, f, sr), ref = T(rec, start, len, this.refHz, sr);
+      const noise = T(rec, Math.floor(0.2 * sr), len, f, sr);
+      return (ref <= 0 || test < 3 * noise || test <= 0) ? NOT : 20 * Math.log10(test / ref);
+    });
+    const peak = Math.max(...rel);
+    if (peak <= NOT) return res;
+    res.levelsDb = rel.map(v => v <= NOT ? NOT : v - peak);
+    let lowest = rel.indexOf(peak);
+    while (lowest > 0 && res.levelsDb[lowest - 1] > LIMIT) lowest--;
+    let cutoff = this.freqs[lowest];
+    if (lowest > 0 && res.levelsDb[lowest - 1] > NOT) {
+      const a = res.levelsDb[lowest - 1], b = res.levelsDb[lowest];
+      const t = Math.max(0, Math.min(1, (b - LIMIT) / (b - a)));
+      cutoff = this.freqs[lowest] * Math.pow(this.freqs[lowest - 1] / this.freqs[lowest], t);
+    }
+    res.cutoffHz = cutoff; res.ok = true;
+    return res;
+  }
+}
+
+// Automatic measurement: play the test signal, record the microphone, find the limit.
+const meas = { stream: null, proc: null, src: null, timer: 0, cancelled: false };
+function stopMeasure() {
+  meas.cancelled = true;
+  clearInterval(meas.timer);
+  if (meas.src) { try { meas.src.stop(); } catch (e) {} meas.src = null; }
+  if (meas.proc) { meas.proc.disconnect(); meas.proc = null; }
+  if (meas.stream) { meas.stream.getTracks().forEach(t => t.stop()); meas.stream = null; }
+}
+$('measureCancel').addEventListener('click', () => { stopMeasure(); $('measurePanel').hidden = true; });
+$('measureBtn').addEventListener('click', async () => {
+  await ensureAudio();
+  if (state.ctx.state === 'suspended') await state.ctx.resume();
+  if (state.playing) { state.offset = position(); stopSource(); state.playing = false; renderPlay(); }
+  stopTest(); stopMeasure(); meas.cancelled = false;
+  const panel = $('measurePanel'), text = $('measureText'), readout = $('measureReadout');
+  panel.hidden = false; readout.textContent = 'Mikrofon wird geöffnet'; $('measureBar').style.width = '0%';
+  try {
+    // Ask the browser to switch off everything that would change the level: auto gain, noise and echo suppression.
+    meas.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+  } catch (e) {
+    readout.textContent = 'Kein Mikrofon';
+    const embedded = window.top !== window;
+    text.innerHTML = embedded
+      ? 'In der Claude-Vorschau dürfen Seiten das Mikrofon nicht nutzen. Öffne die Seite unter <a href="https://julianschneider3618-beep.github.io/Musik-open/" target="_blank" rel="noopener">julianschneider3618-beep.github.io/Musik-open</a>, dort funktioniert die Messung.'
+      : 'Der Browser hat den Zugriff aufs Mikrofon nicht erlaubt. Tipp auf das Schloss oder „aA“ neben der Adresse, erlaube das Mikrofon und starte die Messung nochmal.';
+    return;
+  }
+  if (meas.cancelled) return;
+  const set = meas.stream.getAudioTracks()[0].getSettings ? meas.stream.getAudioTracks()[0].getSettings() : {};
+  const stillOn = ['autoGainControl', 'noiseSuppression', 'echoCancellation'].filter(k => set[k] === true);
+  const ctx = state.ctx, m = new SpeakerMeasurement(ctx.sampleRate), sig = m.testSignal();
+  const buf = ctx.createBuffer(1, sig.length, ctx.sampleRate); buf.getChannelData(0).set(sig);
+  const rec = new Float32Array(sig.length + Math.floor(0.5 * ctx.sampleRate)); let filled = 0;
+  const startAt = ctx.currentTime + 0.2;
+  meas.proc = ctx.createScriptProcessor(4096, 1, 1);
+  meas.proc.onaudioprocess = ev => {
+    const input = ev.inputBuffer.getChannelData(0);
+    // Keep only samples recorded from the moment playback starts.
+    const skip = Math.max(0, Math.round((startAt - ev.playbackTime) * ctx.sampleRate));
+    for (let i = skip; i < input.length && filled < rec.length; i++) rec[filled++] = input[i];
+  };
+  const mic = ctx.createMediaStreamSource(meas.stream), mute = ctx.createGain(); mute.gain.value = 0;
+  mic.connect(meas.proc); meas.proc.connect(mute); mute.connect(ctx.destination);
+  const src = ctx.createBufferSource(); src.buffer = buf; src.connect(ctx.destination); src.start(startAt); meas.src = src;
+  readout.textContent = 'Messung läuft';
+  text.textContent = 'Bitte leise sein. Die Töne werden von tief nach hoch gespielt.' +
+    (stillOn.length ? ' Dein Browser lässt die automatische Pegelregelung an. Die Messung gleicht das über einen Bezugston aus.' : '');
+  meas.timer = setInterval(() => {
+    $('measureBar').style.width = `${Math.min(100, Math.round(filled / rec.length * 100))}%`;
+    if (filled < rec.length) return;
+    const recorded = rec; stopMeasure();
+    const r = m.analyze(recorded);
+    if (!r.ok) {
+      readout.textContent = 'Nichts gehört';
+      text.textContent = 'Das Mikrofon hat die Testtöne nicht aufgenommen. Mach lauter oder geh näher an den Lautsprecher und versuch es nochmal.';
+      return;
+    }
+    const hz = Math.max(30, Math.min(250, Math.round(r.cutoffHz / 5) * 5));
+    setCutoff(hz);
+    $('sim').checked = false; simOn = false; pushParams();
+    readout.textContent = `${hz} Hz`;
+    text.textContent = `Dein Lautsprecher spielt ab etwa ${Math.round(r.cutoffHz)} Hz. Die Grenze ist gesetzt und die Simulation aus, weil dein Lautsprecher die tiefen Töne jetzt selbst weglässt.` +
+      (r.latencySeconds > 0.1 ? ` Verzögerung ${Math.round(r.latencySeconds * 1000)} ms, wahrscheinlich Bluetooth.` : '');
+  }, 200);
+});
+
+// ---- Speaker test: a slow downward sweep straight to the speaker, no effect, no simulation ----
+const test = { osc: null, gain: null, t0: 0 };
+const SWEEP_FROM = 250, SWEEP_TO = 20, SWEEP_SECS = 18;
+const sweepFreq = () => {
+  const k = Math.min(1, (state.ctx.currentTime - test.t0) / SWEEP_SECS);
+  return SWEEP_FROM * Math.pow(SWEEP_TO / SWEEP_FROM, k);
+};
+function stopTest() {
+  if (test.osc) {
+    const now = state.ctx.currentTime;
+    test.gain.gain.setTargetAtTime(0, now, 0.03);
+    test.osc.stop(now + 0.2); test.osc = null;
+  }
+  $('speakerTest').hidden = true;
+}
+$('testBtn').addEventListener('click', async () => {
+  await ensureAudio();
+  if (state.ctx.state === 'suspended') await state.ctx.resume();
+  if (state.playing) { state.offset = position(); stopSource(); state.playing = false; renderPlay(); }
+  stopTest();
+  const ctx = state.ctx, osc = ctx.createOscillator(), gain = ctx.createGain();
+  osc.frequency.setValueAtTime(SWEEP_FROM, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(SWEEP_TO, ctx.currentTime + SWEEP_SECS);
+  gain.gain.setValueAtTime(0, ctx.currentTime); gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.1);
+  osc.connect(gain); gain.connect(ctx.destination);
+  osc.start(); test.osc = osc; test.gain = gain; test.t0 = ctx.currentTime;
+  osc.onended = () => { if (test.osc === osc) { test.osc = null; $('speakerTest').hidden = true; } };
+  osc.stop(ctx.currentTime + SWEEP_SECS + 1.5);
+  $('speakerTest').hidden = false;
+  const tick = () => { if (test.osc === osc) { $('testFreq').textContent = Math.round(sweepFreq()); requestAnimationFrame(tick); } };
+  tick();
+});
+$('testStop').addEventListener('click', () => {
+  if (!test.osc) return;
+  // Where the tone fades out the speaker is already weak; put the limit a bit above.
+  const hz = Math.max(30, Math.min(250, Math.round(sweepFreq() * 1.25 / 5) * 5));
+  stopTest();
+  setCutoff(hz);
+  $('sim').checked = false; simOn = false; pushParams();
+  $('status').textContent = `Grenze auf ${hz} Hz gesetzt. Die Simulation ist aus, weil dein Lautsprecher die tiefen Töne jetzt selbst weglässt.`;
+});
+$('testCancel').addEventListener('click', stopTest);
+$('sim').addEventListener('change', e => { simOn = e.target.checked; pushParams(); });
+$('keep').addEventListener('change', e => { params.removeBass = !e.target.checked; pushParams(); });
+
+async function loadFile(file) {
+  if (!file) return;
+  $('status').textContent = `Lade „${file.name}“ …`;
+  await ensureAudio();
+  try {
+    const data = await file.arrayBuffer();
+    const buf = await state.ctx.decodeAudioData(data);
+    stopSource(); state.playing = false; renderPlay();
+    state.buffer = buf; state.offset = 0; state.name = file.name;
+    $('trackName').textContent = file.name;
+    const isVideo = (file.type || '').startsWith('video/') || /\.(mp4|mov|m4v|webm)$/i.test(file.name);
+    $('status').textContent = isVideo ? 'Tonspur aus dem Video geladen. Drück auf Abspielen.' : 'Geladen. Drück auf Abspielen.';
+  } catch (e) {
+    $('status').innerHTML = '<span class="error">Diese Datei kann der Browser nicht lesen.</span> Probier MP3, WAV, M4A, FLAC oder ein MP4-Video. MKV- und AVI-Videos versteht der Browser meist nicht.';
+  }
+}
+$('file').addEventListener('change', e => loadFile(e.target.files[0]));
+document.addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('drop-active'); });
+document.addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('drop-active'); });
+document.addEventListener('drop', e => { e.preventDefault(); document.body.classList.remove('drop-active'); loadFile(e.dataTransfer.files[0]); });
+
+// ---- Spectrum: 20 Hz to 2 kHz, log scale ----
+const canvas = $('spectrum'), g = canvas.getContext('2d');
+let freqData = null;
+const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'H'];
+function noteName(f) {
+  const m = Math.round(69 + 12 * Math.log2(f / 440));
+  return NOTE_NAMES[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
+}
+function renderPitch() {
+  const active = state.playing && params.enabled && params.pitchTracking;
+  const voiced = active && pitch.f0 > 0;
+  $('pitchNote').textContent = voiced ? `${pitch.f0.toFixed(1)} Hz · ${noteName(pitch.f0)}` : '–';
+  $('pitchBar').style.width = `${Math.round((active ? pitch.conf : 0) * 100)}%`;
+  $('pitchState').textContent = !params.pitchTracking ? 'Tonhöhenerkennung aus'
+    : !active ? 'Wartet auf Musik'
+    : pitch.conf > 0.5 ? 'Saubere Obertöne' : 'Altes Verfahren (Drums, Geräusche)';
+}
+function draw() {
+  const dpr = window.devicePixelRatio || 1, w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const css = getComputedStyle(document.documentElement), tok = n => css.getPropertyValue(n).trim();
+  const fMin = 20, fMax = 2000, padB = 22, plotH = h - padB;
+  const xOf = f => Math.log(f / fMin) / Math.log(fMax / fMin) * w;
+  g.clearRect(0, 0, w, h);
+
+  // Zone the speaker cannot play.
+  const cx = xOf(params.cutoff);
+  g.fillStyle = tok('--zone'); g.fillRect(0, 0, cx, plotH);
+  g.strokeStyle = tok('--muted'); g.setLineDash([4, 4]); g.beginPath(); g.moveTo(cx, 0); g.lineTo(cx, plotH); g.stroke(); g.setLineDash([]);
+  g.fillStyle = tok('--muted'); g.font = `11px ${tok('--font-mono')}`;
+  g.textAlign = 'right'; g.fillText(`${params.cutoff} Hz`, cx - 6, 14);
+
+  // Grid + labels.
+  g.textAlign = 'center'; g.strokeStyle = tok('--line'); g.lineWidth = 1;
+  for (const f of [20, 50, 100, 200, 500, 1000, 2000]) {
+    const x = xOf(f); g.beginPath(); g.moveTo(x, plotH); g.lineTo(x, plotH + 4); g.stroke();
+    g.fillText(f >= 1000 ? `${f / 1000}k` : String(f), Math.min(Math.max(x, 12), w - 12), h - 6);
+  }
+  g.beginPath(); g.moveTo(0, plotH + 0.5); g.lineTo(w, plotH + 0.5); g.stroke();
+
+  if (state.analyser) {
+    const a = state.analyser, bins = a.frequencyBinCount, sr = state.ctx.sampleRate;
+    if (!freqData || freqData.length !== bins) freqData = new Float32Array(bins);
+    a.getFloatFrequencyData(freqData);
+    const yOf = db => plotH - Math.max(0, Math.min(1, (db + 100) / 80)) * (plotH - 8);
+    g.beginPath(); g.moveTo(0, plotH);
+    for (let px = 0; px <= w; px += 2) {
+      const f = fMin * Math.pow(fMax / fMin, px / w), bin = Math.min(bins - 1, Math.round(f / (sr / 2) * bins));
+      let db = freqData[bin]; if (!isFinite(db)) db = -120;
+      g.lineTo(px, yOf(db));
+    }
+    g.lineTo(w, plotH); g.closePath();
+    const accent = tok('--accent');
+    g.globalAlpha = 0.25; g.fillStyle = accent; g.fill(); g.globalAlpha = 1;
+    g.strokeStyle = accent; g.lineWidth = 1.5; g.stroke();
+  }
+  requestAnimationFrame(draw);
+  renderPitch();
+
+  if (state.buffer) {
+    const pos = position(), dur = state.buffer.duration;
+    if (document.activeElement !== $('seek')) $('seek').value = Math.round(pos / dur * 1000);
+    $('trackTime').textContent = `${fmt(pos)} / ${fmt(dur)}`;
+  }
+}
+draw();
+</script>
+
+</body>
+</html>
