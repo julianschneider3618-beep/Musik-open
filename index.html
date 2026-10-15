@@ -98,6 +98,17 @@ button:focus-visible, .filebtn:focus-within, input:focus-visible { outline: 2px 
 .mini:disabled { cursor: default; opacity: 0.45; }
 .small { min-height: 36px; padding: 6px 12px; font-size: 13px; justify-self: start; }
 .measure { display: grid; gap: 8px; font-size: 13px; color: var(--muted); }
+.curve { display: block; width: 100%; max-width: 420px; height: auto; margin: 4px 0 10px; font: 9px var(--font-mono); fill: var(--muted); }
+.curve[hidden] { display: none; }
+.curve line.grid { stroke: var(--line); stroke-width: 0.5; }
+.curve line.zero { stroke: var(--muted); stroke-width: 0.7; }
+.curve line.limit { stroke: var(--accent); stroke-width: 0.8; stroke-dasharray: 2 2; }
+.curve text.limit { fill: var(--accent); }
+.curve path { fill: none; stroke-width: 1.8; stroke-linejoin: round; }
+.curve path.measured { stroke: #4a7bd8; }
+.curve text.measured { fill: #4a7bd8; }
+.curve path.corrected { stroke: #2f9e5a; }
+.curve text.corrected { fill: #2f9e5a; }
 .measure p { margin: 0; }
 .measure a { color: var(--accent); }
 .bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
@@ -170,6 +181,7 @@ button:focus-visible, .filebtn:focus-within, input:focus-visible { outline: 2px 
       <li class="feature">
         <div class="row"><h3 id="t-spk">Lautsprecher-Korrektur</h3><button class="mini" id="sw-spk" aria-pressed="true" aria-labelledby="t-spk"><span class="knob" aria-hidden="true"></span></button></div>
         <p id="note-spk"></p>
+        <svg class="curve" id="spkCurve" viewBox="0 0 320 150" role="img" aria-label="Frequenzkurve des Lautsprechers" hidden></svg>
         <button class="small" id="measureBtn">Lautsprecher messen</button>
         <div class="measure" id="measurePanel" hidden>
           <p>Stell die Lautstärke ein wie beim normalen Hören und halte das Handy etwa 20 cm vor den Lautsprecher.</p>
@@ -201,17 +213,17 @@ button:focus-visible, .filebtn:focus-within, input:focus-visible { outline: 2px 
 
   <section class="about">
     <h2>Was passiert</h2>
-    <p><b>Phantombass:</b> Kleine Lautsprecher können tiefe Töne kaum abspielen. Wenn ein Song echten tiefen Bass hat, fügt Phantombass leise dessen Obertöne hinzu, daraus ergänzt das Ohr den tiefen Ton. Songs ohne tiefen Bass bekommen nichts dazu.</p>
+    <p><b>Phantombass:</b> Kleine Lautsprecher können tiefe Töne kaum abspielen. Phantombass macht es wie Apple bei den MacBooks: Der tiefe Bass wird sanft gesättigt, und was dabei knapp über der Grenze deines Lautsprechers entsteht, kommt zur Musik dazu. Daraus ergänzt das Ohr den tiefen Ton. Songs ohne tiefen Bass bekommen nichts dazu.</p>
     <p><b>Höhen ergänzen:</b> Viele MP3s und Videos sind beim Komprimieren oben abgeschnitten. Die fehlenden Höhen werden aus dem Bereich darunter ergänzt, wie es moderne Audio-Codecs tun.</p>
     <p><b>Klangbalance:</b> Der ganze Song wird analysiert. Klingt er dumpf, mulmig oder scharf, wird er sanft in Richtung gut abgemischter Musik verschoben, höchstens 3 dB und ohne lauter zu werden.</p>
     <p><b>Gleiche Lautstärke:</b> Jeder Song spielt so laut wie bei Spotify und YouTube üblich (−14 LUFS), ohne zu übersteuern.</p>
     <p><b>Stereo breiter:</b> Der Raumanteil über 300 Hz wird etwas lauter. Bass und Stimme bleiben in der Mitte.</p>
-    <p><b>Lautsprecher-Korrektur:</b> Das Handy misst deinen Lautsprecher einmal mit dem Mikrofon. Danach werden seine Schwächen ausgeglichen, und Phantombass setzt genau dort an, wo sein Bass aufhört.</p>
+    <p><b>Lautsprecher-Korrektur:</b> Das Handy misst deinen Lautsprecher einmal mit dem Mikrofon, von 31,5 Hz bis 12,5 kHz. Danach wird seine Kurve flach ausgeglichen, und Phantombass setzt genau dort an, wo sein Bass aufhört.</p>
   </section>
 </div>
 
 <script>
-// ---- DSP: same algorithm as core/src (VirtualBass.cpp, PitchTracker.cpp) ----
+// ---- DSP: same algorithm as core/src (VirtualBass.cpp, SpeakerMeasurement.cpp) ----
 class Biquad {
   constructor() { this.b0 = 1; this.b1 = 0; this.b2 = 0; this.a1 = 0; this.a2 = 0; this.z1 = 0; this.z2 = 0; }
   set(sr, f, q, hp) {
@@ -228,178 +240,67 @@ class Biquad {
   }
 }
 
-// YIN pitch tracker on the bass band, decimated to ~3 kHz, every ~10 ms on a ~50 ms window.
-class PitchTracker {
-  constructor(sr) {
-    this.dec = Math.max(1, Math.round(sr / 3000)); this.rate = sr / this.dec;
-    this.win = Math.ceil(0.05 * this.rate); this.lagCap = Math.ceil(this.rate / 20);
-    this.hop = Math.max(1, Math.ceil(0.01 * this.rate));
-    let size = 1; while (size < this.win + this.lagCap + 1) size <<= 1;
-    this.ring = new Float32Array(size); this.mask = size - 1;
-    this.frame = new Float32Array(this.win + this.lagCap + 1); this.diff = new Float32Array(this.lagCap + 1);
-    this.pos = 0; this.dc = 0; this.hc = 0; this.voiced = false; this.freq = 0; this.aper = 1;
-    this.setRange(20, 250);
-  }
-  setRange(minHz, maxHz) {
-    this.minLag = Math.max(2, Math.floor(this.rate / Math.max(maxHz, minHz + 1)));
-    this.maxLag = Math.min(this.lagCap, Math.ceil(this.rate / Math.max(minHz, 20)));
-  }
-  push(x) {
-    if (++this.dc < this.dec) return;
-    this.dc = 0; this.ring[this.pos] = x; this.pos = (this.pos + 1) & this.mask;
-    if (++this.hc >= this.hop) { this.hc = 0; this.analyze(); }
-  }
-  analyze() {
-    const fr = this.frame, n = fr.length, d = this.diff, W = this.win, base = n - W;
-    let p = (this.pos - n) & this.mask, energy = 0;
-    for (let i = 0; i < n; i++) { fr[i] = this.ring[p]; p = (p + 1) & this.mask; }
-    for (let i = base; i < n; i++) energy += fr[i] * fr[i];
-    if (Math.sqrt(energy / W) < 1e-4) { this.voiced = false; this.aper = 1; return; }
-    d[0] = 1; let running = 0;
-    for (let tau = 1; tau <= this.maxLag; tau++) {
-      let s = 0;
-      for (let j = 0; j < W; j++) { const delta = fr[base + j] - fr[base + j - tau]; s += delta * delta; }
-      running += s; d[tau] = running > 0 ? s * tau / running : 1;
-    }
-    let best = -1;
-    for (let tau = this.minLag; tau <= this.maxLag; tau++) {
-      if (d[tau] < 0.2) { while (tau + 1 <= this.maxLag && d[tau + 1] < d[tau]) tau++; best = tau; break; }
-    }
-    if (best < 0) {
-      let m = 1; for (let tau = this.minLag; tau <= this.maxLag; tau++) m = Math.min(m, d[tau]);
-      this.voiced = false; this.aper = m; return;
-    }
-    let lag = best;
-    if (best > this.minLag && best < this.maxLag) {
-      const a = d[best - 1], b = d[best], c = d[best + 1], den = a - 2 * b + c;
-      if (den > 0) lag += 0.5 * (a - c) / den;
-    }
-    this.voiced = true; this.aper = d[best]; this.freq = this.rate / lag;
-  }
-}
-
+// Psychoacoustic bass the way Apple's MacBooks do it (asahi-audio's "bankstown", MacBook Air
+// profile): the bass band (20 Hz up to the speaker's limit, at most 200 Hz) goes through a soft
+// saturation, and what lands between the limit and three times the limit is added to the music.
+// Quiet bass passes almost unchanged (the band just above the limit gets a little louder), loud
+// bass gets its harmonics where the speaker can play them. Julian preferred it by ear over a
+// phase vocoder and over the older pitch-tracking hybrid. The original is never touched.
 class VirtualBass {
   constructor(sr) {
     this.sr = sr;
     const lr4 = () => [new Biquad(), new Biquad()];
-    this.dryL = lr4(); this.dryR = lr4(); this.bassLp = lr4(); this.harmHp = lr4();
-    this.subsonic = new Biquad(); this.harmLp = lr4();
+    this.dryL = lr4(); this.dryR = lr4();
+    this.bandHp = new Biquad(); this.bandLp = new Biquad(); this.outHp = new Biquad(); this.outLp = new Biquad();
     const tc = s => Math.exp(-1 / (s * sr));
-    this.rel = tc(0.5); this.smooth = tc(0.02); this.powC = tc(0.25); this.hrRel = tc(0.05); this.hrGain = 1;
-    this.glideC = tc(0.01); this.confC = tc(0.03); this.ampC = tc(0.015);
-    this.bassLvl = 0; this.fullLvl = 0; this.presence = 1;
-    this.env = 0; this.wet = 1; this.dryHp = 0; this.bassPow = 0; this.harmPow = 0; this.autoGain = 1;
-    this.tracker = new PitchTracker(sr);
-    this.phase = 0; this.f0 = 0; this.conf = 0; this.ms = 0; this.gains = new Float32Array(17); this.gainsF0 = -1;
-    this.p = { cutoff: 120, amount: 1, tone: 0.5, autoLevel: true, pitchTracking: true, enabled: true, removeBass: false };
-    this.h2 = 0.55; this.h3 = 0.5; this.h4 = 0.15;
+    this.smooth = tc(0.02); this.powC = tc(0.25); this.hrRel = tc(0.05); this.hrGain = 1;
+    this.wet = 1; this.dryHp = 0;
+    // Display only: how much deep bass there is, and roughly which note.
+    this.bassLvl = 0; this.fullLvl = 0; this.presence = 0; this.f0 = 0;
+    this.lastBass = 0; this.crossings = 0; this.firstX = 0; this.lastX = 0; this.count = 0; this.displayN = Math.round(0.25 * sr);
+    this.p = { cutoff: 120, amount: 1, enabled: true, removeBass: false };
     this.update();
   }
   setParams(p) {
-    const oldC = this.p.cutoff, oldT = this.p.tone;
+    const old = this.p.cutoff;
     Object.assign(this.p, p);
-    const t = Math.max(0, Math.min(1, this.p.tone));
-    this.h2 = 0.8 - 0.5 * t; this.h3 = 0.3 + 0.4 * t; this.h4 = 0.2 - 0.1 * t;
-    if (this.p.cutoff !== oldC) this.update();
-    if (this.p.cutoff !== oldC || this.p.tone !== oldT) this.gainsF0 = -1;
+    this.p.cutoff = Math.max(30, Math.min(400, this.p.cutoff));
+    if (this.p.cutoff !== old) this.update();
   }
   update() {
     const sr = this.sr, fc = this.p.cutoff, Q = Math.SQRT1_2;
-    for (const f of [...this.dryL, ...this.dryR, ...this.harmHp]) f.set(sr, fc, Q, true);
-    // Only deep bass becomes harmonics, even when the speaker stops higher (laptops 200-300 Hz):
-    // above ~120 Hz sit voices and guitars, whose harmonics would drone at 300-900 Hz.
-    const src = Math.min(fc, 120);
-    for (const f of this.bassLp) f.set(sr, src, Q, false);
-    this.subsonic.set(sr, Math.min(18, 0.6 * fc), Q, true);
-    for (const f of this.harmLp) f.set(sr, Math.min(fc * 3, sr * 0.45), Q, false);
-    this.tracker.setRange(20, src);
-  }
-  // Harmonic k*f0: fades in just below the cutoff, falls off upwards (steeper when warm), gone by 3 fc.
-  updateGains() {
-    const fc = this.p.cutoff, tilt = 1.6 - 1.2 * this.p.tone, g = this.gains;
-    const ss = x => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
-    let norm = 0;
-    for (let k = 2; k <= 16; k++) {
-      const f = k * this.f0;
-      g[k] = f < 3 * fc && f < this.sr * 0.45
-        ? ss((f - 0.85 * fc) / (0.35 * fc)) * ss((3 * fc - f) / (0.6 * fc)) * Math.pow(fc / f, tilt) : 0;
-      norm += g[k] * g[k];
-    }
-    if (norm > 0) { const s = 1 / Math.sqrt(norm); for (let k = 2; k <= 16; k++) g[k] *= s; }
-    this.gainsF0 = this.f0;
-  }
-  synth() {
-    if (this.f0 <= 0) return 0;
-    if (Math.abs(this.f0 - this.gainsF0) > 0.002 * this.f0) this.updateGains();
-    this.phase += 2 * Math.PI * this.f0 / this.sr;
-    if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
-    // sin(k phase) by the recurrence s_k = 2 cos(phase) s_(k-1) - s_(k-2).
-    const c2 = 2 * Math.cos(this.phase), g = this.gains;
-    let prev = 0, cur = Math.sin(this.phase), sum = 0;
-    for (let k = 2; k <= 16; k++) { const next = c2 * cur - prev; prev = cur; cur = next; sum += g[k] * cur; }
-    return Math.sqrt(2 * this.ms) * 0.6 * sum;
+    for (const f of [...this.dryL, ...this.dryR]) f.set(sr, fc, Q, true);
+    this.bandHp.set(sr, 20, Q, true);
+    this.bandLp.set(sr, Math.min(fc, 200), Q, false);
+    this.outHp.set(sr, fc, Q, true);
+    this.outLp.set(sr, Math.min(3 * fc, 0.45 * sr), Q, false);
   }
   process(L, R, n) {
     const p = this.p, wetT = p.enabled ? p.amount : 0, hpT = p.enabled && p.removeBass ? 1 : 0;
-    const [dl1, dl2] = this.dryL, [dr1, dr2] = this.dryR, [bl1, bl2] = this.bassLp, [hh1, hh2] = this.harmHp;
-    const tr = this.tracker;
+    const SCALE = Math.PI / (0.5 + Math.E), AMOUNT = 1.2, DRIVE = 1.3;  // asahi-audio's MacBook Air settings
+    const [dl1, dl2] = this.dryL, [dr1, dr2] = this.dryR;
     for (let i = 0; i < n; i++) {
-      const l = L[i], r = R ? R[i] : l;
-      const bass = bl2.process(bl1.process(this.subsonic.process(0.5 * (l + r))));
-      // Nonlinear generator. Instant attack keeps x inside [-1, 1], so the polynomials never clip.
-      const mag = Math.abs(bass);
-      this.env = mag > this.env ? mag : this.rel * this.env + (1 - this.rel) * mag;
-      let h = 0;
-      if (this.env > 1e-6) {
-        const x = Math.max(-1, Math.min(1, bass / this.env)), x2 = x * x;
-        const t3 = x * (4 * x2 - 3), t4 = 8 * x2 * x2 - 8 * x2 + 1;
-        let sum = this.h2 * (2 * x2 - 1) + this.h3 * t3 + this.h4 * t4;
-        if (p.cutoff > 180) {
-          // A speaker that stops high only hears higher harmonics of deep bass: T5..T8.
-          let prev = t3, cur = t4;
-          for (let k = 5; k <= 8; k++) { const next = 2 * x * cur - prev; prev = cur; cur = next; sum += (0.6 / k) * cur; }
-        }
-        h = this.env * sum;
-      }
-      // Hybrid: crossfade to clean synthesised harmonics while the bass has a clear pitch.
-      if (p.pitchTracking) {
-        tr.push(bass);
-        this.ms = this.ampC * this.ms + (1 - this.ampC) * bass * bass;
-        const target = tr.voiced ? Math.max(0, Math.min(1, (0.2 - tr.aper) / 0.15)) : 0;
-        this.conf = this.confC * this.conf + (1 - this.confC) * target;
-        if (tr.voiced) {
-          const f = tr.freq;
-          this.f0 = (this.f0 <= 0 || Math.abs(f - this.f0) > 0.06 * this.f0) ? f : this.glideC * this.f0 + (1 - this.glideC) * f;
-        }
-        if (this.conf > 1e-3) h += this.conf * (this.synth() - h);
-      } else {
-        this.conf = 0;
-      }
-      h = this.harmLp[1].process(this.harmLp[0].process(hh2.process(hh1.process(h))));
-      let gain = 1;
-      if (p.autoLevel) {
-        // Harmonics about 10 dB below the bass: the ear fills in the fundamental without it sounding distorted.
-        this.bassPow = this.powC * this.bassPow + (1 - this.powC) * bass * bass;
-        this.harmPow = this.powC * this.harmPow + (1 - this.powC) * h * h;
-        if (this.harmPow > 1e-12) this.autoGain = Math.max(0, Math.min(4, 0.3 * Math.sqrt(this.bassPow / this.harmPow)));
-        gain = this.autoGain;
-      }
-      // Only reinforce bass that is really there: harmonics fade when the bass band holds less than
-      // -12 dB of the mix's power and are gone at -24 dB, so songs without deep bass get nothing invented.
-      const mono = 0.5 * (l + r);
+      const l = L[i], r = R ? R[i] : l, mono = 0.5 * (l + r);
+      const bass = this.bandLp.process(this.bandHp.process(mono));
+      const added = this.outLp.process(this.outHp.process(SCALE * Math.tanh(DRIVE * bass) * AMOUNT));
+
       this.bassLvl = this.powC * this.bassLvl + (1 - this.powC) * bass * bass;
       this.fullLvl = this.powC * this.fullLvl + (1 - this.powC) * mono * mono;
-      if (this.fullLvl > 1e-12) {
-        const x = Math.max(0, Math.min(1, (10 * Math.log10(this.bassLvl / this.fullLvl + 1e-12) + 24) / 12));
-        this.presence = x * x * (3 - 2 * x);
+      if (this.lastBass <= 0 && bass > 0) { if (this.crossings++ === 0) this.firstX = this.count; this.lastX = this.count; }
+      this.lastBass = bass;
+      if (++this.count >= this.displayN) {
+        const x = Math.max(0, Math.min(1, (10 * Math.log10(this.bassLvl / (this.fullLvl + 1e-20) + 1e-12) + 24) / 12));
+        this.presence = this.fullLvl > 1e-10 ? x * x * (3 - 2 * x) : 0;
+        this.f0 = this.presence > 0.2 && this.crossings > 2 ? (this.crossings - 1) * this.sr / (this.lastX - this.firstX) : 0;
+        this.crossings = 0; this.count = 0;
       }
-      gain *= this.presence;
-      this.wet = this.smooth * this.wet + (1 - this.smooth) * wetT * gain;
+
+      this.wet = this.smooth * this.wet + (1 - this.smooth) * wetT;
       this.dryHp = this.smooth * this.dryHp + (1 - this.smooth) * hpT;
       const hl = dl2.process(dl1.process(l)), hr = dr2.process(dr1.process(r));
       const dl = l + this.dryHp * (hl - l), dr = r + this.dryHp * (hr - r);
-      let add = this.wet * h;
-      // Never let the harmonics push the output past full scale; the original is never touched.
+      let add = this.wet * added;
+      // Never let the added part push the output past full scale; the original is never touched.
       let allowed = 1;
       for (const d of [dl, dr]) {
         const sum = d + add * this.hrGain;
@@ -411,7 +312,6 @@ class VirtualBass {
       if (R) R[i] = dr + add;
     }
   }
-  pitchInfo() { return { f0: this.conf > 0.05 ? this.f0 : 0, conf: this.conf }; }
 }
 
 
@@ -605,43 +505,13 @@ function coefsPower(k, f, sr) {
   return (nr * nr + ni * ni) / (dr * dr + di * di);
 }
 
-// Real bass as low as the speaker goes (as phones do it): the band just above the measured
-// limit up by as much as 5 dB, backed off while the music's bass there is already loud
-// (-12 dBFS and up), so the membrane never moves further than it would without it.
-class BassExtender {
-  constructor(sr) {
-    this.sr = sr; const tc = s => Math.exp(-1 / (s * sr));
-    this.att = tc(0.005); this.rel = tc(0.25); this.sm = tc(0.03);
-    this.bl = new Biquad(); this.br = new Biquad(); this.env = 0; this.g = 0; this.on = false; this.fc = 0;
-    this.setCutoff(120);
-  }
-  setCutoff(fc) {
-    fc = Math.max(30, Math.min(400, fc)); if (fc === this.fc) return; this.fc = fc;
-    // Band-pass, 0 dB at the centre, a little below the limit.
-    const w = 2 * Math.PI * 0.85 * fc / this.sr, al = Math.sin(w) / (2 * 0.8), a0 = 1 + al;
-    for (const f of [this.bl, this.br]) { f.b0 = al / a0; f.b1 = 0; f.b2 = -al / a0; f.a1 = -2 * Math.cos(w) / a0; f.a2 = (1 - al) / a0; }
-  }
-  idle() { return !this.on && this.g < 1e-5; }
-  process(L, R, n) {
-    const MAX = 0.778, CEIL = 0.25;
-    for (let i = 0; i < n; i++) {
-      const l = L[i], r = R ? R[i] : l, bl = this.bl.process(l), br = R ? this.br.process(r) : bl;
-      const m = Math.max(Math.abs(bl), Math.abs(br));
-      this.env = m > this.env ? this.att * this.env + (1 - this.att) * m : this.rel * this.env + (1 - this.rel) * m;
-      const target = !this.on ? 0 : this.env > 1e-6 ? Math.max(0, Math.min(MAX, CEIL / this.env - 1)) : MAX;
-      this.g = target < this.g ? this.att * this.g + (1 - this.att) * target : this.sm * this.g + (1 - this.sm) * target;
-      L[i] = l + this.g * bl; if (R) R[i] = r + this.g * br;
-    }
-  }
-}
-
 // ---- Everything that runs on the audio thread, in this order:
-// tone balance -> speaker correction -> equal loudness -> wider stereo -> real bass at the speaker limit -> Phantombass -> clip guard.
+// tone balance -> speaker correction -> equal loudness -> wider stereo -> Phantombass -> clip guard.
 // Each stage fades in and out over ~20 ms; a stage that is off passes the samples through untouched,
 // so with every switch off the output is the file, bit for bit.
 class Enhancer {
   constructor(sr) {
-    this.sr = sr; this.vb = new VirtualBass(sr); this.vb.wet = 0; this.ext = new BassExtender(sr);
+    this.sr = sr; this.vb = new VirtualBass(sr); this.vb.wet = 0;
     this.bal = null; this.spk = null;
     this.sideLp = new Biquad(); this.sideLp.set(sr, 300, Math.SQRT1_2, false);
     const tc = s => Math.exp(-1 / (s * sr));
@@ -664,13 +534,12 @@ class Enhancer {
     this.t.gain = q.loud ? Math.pow(10, q.gainDb / 20) : 1;
     this.t.width = q.width ? 1 : 0;
     const vbp = { enabled: !!q.bass };
-    if (q.cutoff) { vbp.cutoff = q.cutoff; this.ext.setCutoff(q.cutoff); }
+    if (q.cutoff) vbp.cutoff = q.cutoff;
     this.vb.setParams(vbp);
-    this.ext.on = !!q.bass;
   }
   report() {
     const vb = this.vb;
-    return { f0: vb.conf > 0.3 ? vb.f0 : 0, presence: vb.presence, active: !!this.p.bass, cutoff: vb.p.cutoff };
+    return { f0: vb.f0, presence: vb.presence, active: !!this.p.bass, cutoff: vb.p.cutoff };
   }
   process(L, R, n) {
     const m = this.m, t = this.t, sm = this.sm;
@@ -693,7 +562,6 @@ class Enhancer {
       L[i] = l; if (R) R[i] = r;
     }
     // Phantombass off and faded out: skip it, so the samples stay exactly as they are.
-    if (!this.ext.idle()) this.ext.process(L, R, n);
     if (this.p.bass || this.vb.wet > 1e-6) this.vb.process(L, R, n);
     // Clip guard: only ever acts where a sample would go past full scale.
     for (let i = 0; i < n; i++) {
@@ -822,8 +690,9 @@ function loudnessGain(info) {
 // Third-octave bands of noise, 31.5 Hz - 12.5 kHz, one after another, over a constant 1 kHz
 // reference tone. Every band is read relative to the reference in the same window, so the
 // microphone's auto gain and the playback volume cancel out. Noise (not tones) averages out
-// room echoes. The result: the speaker's response, its lowest usable frequency (which becomes
-// Phantombass's cut-off) and a gentle correction (cuts up to 6 dB, boosts up to 3 dB).
+// room echoes. The result: the speaker's response relative to its mids (median 200 Hz - 4 kHz),
+// its lowest usable frequency (which becomes Phantombass's cut-off) and a correction that makes
+// the response flat above it (cuts up to 10 dB, boosts up to 6 dB). Same as SpeakerMeasurement.cpp.
 const SPK_CENTERS = [31.5, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6300, 8000, 10000, 12500];
 class SpeakerCheck {
   constructor(sr) {
@@ -894,42 +763,62 @@ class SpeakerCheck {
       const ref = this.sum(p, N, this.refHz - 10, this.refHz + 10, false);
       return band > 4 * floor && ref > 0 ? 10 * Math.log10((band - floor) / ref) : null;
     });
-    // Relative to the average 200 Hz - 4 kHz.
-    const mids = db.filter((v, i) => v !== null && SPK_CENTERS[i] >= 200 && SPK_CENTERS[i] <= 4000);
+    // Relative to the typical level from 200 Hz to 4 kHz (median, so a resonance doesn't move it).
+    const mids = db.filter((v, i) => v !== null && SPK_CENTERS[i] >= 200 && SPK_CENTERS[i] <= 4000).sort((a, b) => a - b);
     if (mids.length < 8) return res;
-    const mid = mids.reduce((a, b) => a + b) / mids.length;
+    const h = mids.length >> 1, mid = mids.length % 2 ? mids[h] : 0.5 * (mids[h - 1] + mids[h]);
     const rel = db.map(v => v === null ? null : v - mid);
-    // Lowest usable frequency: walking down from 200 Hz, the last band within 6 dB of the mids.
-    let lim = SPK_CENTERS.indexOf(200);
-    // A single band in a room notch (up to 12 dB) is stepped over when the band below it is fine again.
+    // Lowest usable frequency: walking down from 200 Hz (or from the first band above it that
+    // plays, for laptops), the last band within 6 dB of the mids. A single band in a room notch
+    // (down to -12 dB) is stepped over when the one below is fine.
     const okAt = i => i >= 0 && rel[i] !== null && rel[i] > -6;
+    let lim = SPK_CENTERS.indexOf(200);
+    while (!okAt(lim) && SPK_CENTERS[lim] < 1000) lim++;
     for (;;) {
       if (okAt(lim - 1)) lim--;
       else if (okAt(lim - 2) && rel[lim - 1] !== null && rel[lim - 1] > -12) lim -= 2;
       else break;
     }
     let cutoff = SPK_CENTERS[lim];
-    if (lim > 0 && rel[lim - 1] !== null) {
+    if (lim > 0 && rel[lim - 1] !== null && rel[lim] !== null) {
       const a = rel[lim - 1], b = rel[lim], t = Math.max(0, Math.min(1, (b + 6) / (b - a)));
       cutoff = SPK_CENTERS[lim] * Math.pow(SPK_CENTERS[lim - 1] / SPK_CENTERS[lim], t);
     }
-    // Correction above the bass limit up to 10 kHz, smoothed over neighbouring bands.
-    const bands = [];
-    SPK_CENTERS.forEach((fc, i) => {
-      if (fc < cutoff * 1.25 || fc > 10000 || rel[i] === null) return;
-      // Smooth over 2/3 octave and correct 70 %: broad speaker traits, not room echoes at the phone.
-      const w = [0.1, 0.2, 0.4, 0.2, 0.1]; let smooth = 0;
-      for (let j = -2; j <= 2; j++) { const v = rel[i + j]; smooth += w[j + 2] * (v === null || v === undefined || SPK_CENTERS[i + j] < cutoff ? rel[i] : v); }
-      const g = Math.max(-6, Math.min(3, -0.7 * smooth));
-      if (Math.abs(g) >= 0.75) bands.push({ type: 'peak', f: fc, q: 4.32, db: +g.toFixed(2) });
+    // Flat above the limit up to 10 kHz: target the opposite of the response, lightly smoothed
+    // (a third of an octave each side), so the speaker's traits are corrected but not every echo.
+    const idx = [], target = [];
+    SPK_CENTERS.forEach((fc, b) => {
+      if (fc < cutoff * 1.25 || fc > 10000 || rel[b] === null) return;
+      const at = j => (j < 0 || j >= SPK_CENTERS.length || rel[j] === null || SPK_CENTERS[j] < cutoff) ? rel[b] : rel[j];
+      idx.push(b); target.push(Math.max(-10, Math.min(6, -(0.25 * at(b - 1) + 0.5 * rel[b] + 0.25 * at(b + 1)))));
     });
-    Object.assign(res, { ok: true, latencySeconds: latency, cutoffHz: cutoff, levelsDb: rel, bands });
+    // Neighbouring filters overlap; adjust their gains until the sum hits the target.
+    let bands = idx.map((b, i) => ({ type: 'peak', f: SPK_CENTERS[b], q: 4.32, db: target[i] }));
+    for (let iter = 0; iter < 12; iter++) {
+      idx.forEach((b, i) => {
+        const got = this.eqDb(bands, SPK_CENTERS[b]);
+        bands[i].db = Math.max(-13, Math.min(9, bands[i].db + 0.8 * (target[i] - got)));
+      });
+    }
+    bands = bands.filter(b => Math.abs(b.db) >= 0.3).map(b => Object.assign(b, { db: +b.db.toFixed(2) }));
+    // Keep the loudest part of the corrected response near 0 dB, so boosts don't clip.
+    let peak = 0;
+    for (let f = 100; f <= 10000; f *= 1.05) peak = Math.max(peak, this.eqDb(bands, f));
+    const gain = peak > 0.5 ? -0.5 * peak : 0;
+    if (gain) bands.push({ type: 'gain', db: +gain.toFixed(2) });
+    // Shown without that volume step, so flat reads as 0 dB.
+    const correctedDb = rel.map((v, i) => v === null ? null : v + this.eqDb(bands, SPK_CENTERS[i]) - gain);
+    Object.assign(res, { ok: true, latencySeconds: latency, cutoffHz: cutoff, levelsDb: rel, correctedDb, bands });
     return res;
+  }
+  // Response of an equaliser in dB at frequency f.
+  eqDb(bands, f) {
+    return bands.reduce((s, b) => s + (b.type === 'gain' ? b.db : 10 * Math.log10(coefsPower(peakCoefs(this.sr, b.f, b.q, b.db), f, this.sr))), 0);
   }
 }
 
 // ---- Player ----
-const WORKLET_SRC = [Biquad, PitchTracker, VirtualBass, BassExtender, peakCoefs, highShelfCoefs, bandCoefs, Enhancer].map(f => f.toString()).join('\n') + `
+const WORKLET_SRC = [Biquad, VirtualBass, peakCoefs, highShelfCoefs, bandCoefs, Enhancer].map(f => f.toString()).join('\n') + `
 class EnhProcessor extends AudioWorkletProcessor {
   constructor() { super(); this.e = new Enhancer(sampleRate); this.n = 0; this.port.onmessage = e => this.e.setParams(e.data); }
   process(inputs, outputs) {
@@ -953,7 +842,7 @@ const state = { ctx: null, node: null, fallback: null, buffer: null, source: nul
 // Switches. "all" is the big one; the others are remembered in this browser.
 const FEATURES = ['bass', 'hf', 'bal', 'loud', 'width', 'spk'];
 const prefs = { all: true, bass: true, hf: true, bal: true, loud: true, width: false, spk: true };
-let speaker = null;  // { bands, cutoffHz } after a measurement
+let speaker = null;  // { bands, cutoffHz, levelsDb, correctedDb } after a measurement
 try {
   const saved = JSON.parse(localStorage.getItem('phantombass') || '{}');
   if (saved.prefs) Object.assign(prefs, saved.prefs);
@@ -964,7 +853,7 @@ const on = key => prefs.all && prefs[key] && (key !== 'spk' || !!speaker);
 
 function params() {
   return { bass: on('bass'), bal: on('bal'), spk: on('spk'), loud: on('loud'), width: on('width'),
-    gainDb: state.song.gainDb, cutoff: speaker ? Math.max(30, Math.min(300, Math.round(speaker.cutoffHz))) : 120 };
+    gainDb: state.song.gainDb, cutoff: speaker ? Math.max(30, Math.min(400, Math.round(speaker.cutoffHz))) : 120 };
 }
 function pushParams(extra) {
   if (!state.ctx) return;
@@ -1055,12 +944,13 @@ function renderSwitches() {
   $('toneBass').setAttribute('aria-pressed', String(on('bass')));
   $('toneBass').textContent = on('bass') ? 'Phantombass: an' : 'Phantombass: aus';
 }
-$('toggle').addEventListener('click', () => { prefs.all = !prefs.all; save(); renderSwitches(); pushParams(); });
+$('toggle').addEventListener('click', () => { prefs.all = !prefs.all; save(); renderSwitches(); pushParams(); renderSpeakerNote(); });
 for (const key of FEATURES) {
   $('sw-' + key).addEventListener('click', () => {
     prefs[key] = !prefs[key];
     if (prefs[key]) prefs.all = true;  // switching one on means you want to hear it
     save(); renderSwitches(); pushParams();
+    if (key === 'spk') renderSpeakerNote();
   });
 }
 
@@ -1090,12 +980,12 @@ async function analyseSong(buf) {
   pushParams({ balBands: bal.bands });
   setNote('bal', describeBalance(bal.bands));
   if (spec) {
-    // Same rule as the effect itself: bass below the cut-off under -24 dB of the mix gets nothing.
+    // How much of the song is bass below the cut-off, which is what Phantombass works on.
     const cut = params().cutoff, bin = spec.sr / spec.n; let lo = 0, all = 0;
     for (let k = 1; k <= spec.n / 2; k++) { all += spec.pow[k]; if (k * bin >= 20 && k * bin < cut) lo += spec.pow[k]; }
     const share = 10 * Math.log10(lo / all + 1e-12);
-    setNote('bass', share < -24 ? `Dieser Song hat kaum Bass unter ${cut} Hz. Phantombass fügt hier nichts hinzu.`
-      : share < -12 ? `Wenig Bass unter ${cut} Hz. Phantombass verstärkt ihn nur leicht.`
+    setNote('bass', share < -24 ? `Dieser Song hat kaum Bass unter ${cut} Hz. Phantombass hat hier fast nichts zu tun.`
+      : share < -12 ? `Wenig Bass unter ${cut} Hz. Phantombass ergänzt nur wenig.`
       : `Der Song hat kräftigen Bass unter ${cut} Hz. Phantombass macht ihn auf kleinen Lautsprechern hörbar.`);
   }
   const g = state.song.gainDb;
@@ -1162,8 +1052,8 @@ function stopMeasure() {
 function renderLimit() {
   const cut = params().cutoff;
   $('toneLimit').textContent = speaker
-    ? `Phantombass setzt bei ${cut} Hz an, gemessen an deinem Lautsprecher. Tiefere Töne bekommen Obertöne, die dein Lautsprecher spielen kann.`
-    : `Phantombass setzt noch bei ${cut} Hz an, das passt zu kleinen Lautsprechern. Eine große Box wie die Soundbox spielt viel tiefer: miss sie einmal, dann setzt Phantombass genau an ihrer Grenze an und nutzt die tiefsten Obertöne, die sie schafft.`;
+    ? `Phantombass setzt bei ${cut} Hz an, gemessen an deinem Lautsprecher. Tieferer Bass bekommt Obertöne, die dein Lautsprecher spielen kann.`
+    : `Phantombass setzt noch bei ${cut} Hz an, das passt zu kleinen Lautsprechern. Eine große Box wie die Soundbox spielt viel tiefer: miss sie einmal, dann setzt Phantombass genau an ihrer Grenze an.`;
   $('toneMeasure').textContent = speaker ? 'Neu messen' : 'Lautsprecher messen';
 }
 $('toneMeasure').addEventListener('click', () => {
@@ -1173,10 +1063,40 @@ $('toneMeasure').addEventListener('click', () => {
 });
 function renderSpeakerNote() {
   renderLimit();
-  setNote('spk', speaker
-    ? `Gemessen: dein Lautsprecher spielt ab etwa ${Math.round(speaker.cutoffHz)} Hz. Phantombass setzt dort an, Höhen und Mitten sind ausgeglichen.`
-    : 'Noch nicht gemessen. Einmal messen, dann passt sich der Klang an deinen Lautsprecher an.');
+  const curve = !!(speaker && speaker.levelsDb);
+  let flat = 0;
+  if (curve) speaker.correctedDb.forEach((v, i) => {
+    if (v !== null && SPK_CENTERS[i] >= 1.25 * speaker.cutoffHz && SPK_CENTERS[i] <= 10000) flat = Math.max(flat, Math.abs(v));
+  });
+  setNote('spk', !speaker ? 'Noch nicht gemessen. Einmal messen, dann wird dein Lautsprecher flach ausgeglichen.'
+    : curve ? `Gemessen: dein Lautsprecher spielt ab etwa ${Math.round(speaker.cutoffHz)} Hz. Phantombass setzt dort an, darüber ist die Kurve mit Korrektur auf ±${Math.max(1, Math.round(flat))} dB flach.`
+    : `Gemessen: dein Lautsprecher spielt ab etwa ${Math.round(speaker.cutoffHz)} Hz. Miss neu, dann wird er ganz flach ausgeglichen.`);
   $('measureBtn').textContent = speaker ? 'Neu messen' : 'Lautsprecher messen';
+  $('spkCurve').toggleAttribute('hidden', !curve);  // an <svg> has no .hidden property
+  if (curve) drawCurve();
+}
+// The measured response (and with the correction) on a log frequency axis, -25 to +10 dB.
+function drawCurve() {
+  const W = 320, H = 150, L = 26, T = 6, Rt = 4, B = 16, w = W - L - Rt, h = H - T - B;
+  const X = f => L + Math.log(f / 25) / Math.log(16000 / 25) * w;
+  const Y = d => T + (10 - Math.max(-25, Math.min(10, d))) / 35 * h;
+  const path = vals => {
+    let d = '', pen = false;
+    vals.forEach((v, i) => { if (v === null) { pen = false; return; } d += `${pen ? 'L' : 'M'}${X(SPK_CENTERS[i]).toFixed(1)},${Y(v).toFixed(1)}`; pen = true; });
+    return d;
+  };
+  let g = '';
+  for (const [f, t] of [[50, '50'], [100, '100'], [200, '200'], [500, '500'], [1000, '1k'], [2000, '2k'], [5000, '5k'], [10000, '10k']])
+    g += `<line class="grid" x1="${X(f)}" x2="${X(f)}" y1="${T}" y2="${T + h}"/><text x="${X(f)}" y="${H - 3}" text-anchor="middle">${t}</text>`;
+  for (const d of [10, 0, -10, -20])
+    g += `<line class="${d ? 'grid' : 'zero'}" x1="${L}" x2="${L + w}" y1="${Y(d)}" y2="${Y(d)}"/><text x="${L - 4}" y="${Y(d) + 3}" text-anchor="end">${d > 0 ? '+' + d : d}</text>`;
+  const cx = X(speaker.cutoffHz), corr = on('spk');
+  g += `<line class="limit" x1="${cx}" x2="${cx}" y1="${T}" y2="${T + h}"/><text class="limit" x="${cx + 3}" y="${T + h - 4}">Grenze ${Math.round(speaker.cutoffHz)} Hz</text>`;
+  g += `<path class="measured" d="${path(speaker.levelsDb)}"/>`;
+  if (corr) g += `<path class="corrected" d="${path(speaker.correctedDb)}"/>`;
+  g += `<text class="measured" x="${L + w - 2}" y="${T + 22}" text-anchor="end">gemessen</text>`;
+  g += `<text class="${corr ? 'corrected' : ''}" x="${L + w - 2}" y="${T + 10}" text-anchor="end">${corr ? 'mit Korrektur' : 'Korrektur aus'}</text>`;
+  $('spkCurve').innerHTML = g;
 }
 $('measureCancel').addEventListener('click', () => { stopMeasure(); $('measurePanel').hidden = true; });
 $('measureBtn').addEventListener('click', async () => {
@@ -1219,7 +1139,7 @@ $('measureBtn').addEventListener('click', async () => {
       text.textContent = 'Das Mikrofon hat das Testsignal nicht gut genug gehört. Mach lauter oder halte das Handy näher an den Lautsprecher und versuch es nochmal.';
       return;
     }
-    speaker = { bands: r.bands, cutoffHz: r.cutoffHz };
+    speaker = { bands: r.bands, cutoffHz: r.cutoffHz, levelsDb: r.levelsDb, correctedDb: r.correctedDb };
     prefs.spk = true; prefs.all = true; save();
     pushParams({ spkBands: r.bands }); renderSwitches(); renderSpeakerNote();
     text.textContent = 'Fertig. Die Korrektur ist eingeschaltet.' + (r.latencySeconds > 0.1 ? ` Verzögerung ${Math.round(r.latencySeconds * 1000)} ms, wahrscheinlich Bluetooth.` : '');
@@ -1262,11 +1182,13 @@ $('toneHold').addEventListener('click', () => {
 function toneInfo(f) {
   const r = state.fallback ? state.fallback.report() : state.report;
   if (!on('bass')) return 'Phantombass ist aus. Du hörst nur den reinen Ton, so wie ihn dein Lautsprecher schafft.';
-  if (r && f > r.cutoff) return `Diesen Ton spielt dein Lautsprecher selbst (über ${r.cutoff} Hz). Phantombass fügt nichts hinzu.`;
-  if (!r || !r.f0) return 'Phantombass sucht den Ton …';
-  const cut = r.cutoff, hs = [];
-  for (let k = 2; k <= 16 && hs.length < 4; k++) if (k * r.f0 >= 0.85 * cut && k * r.f0 < 3 * cut) hs.push(Math.round(k * r.f0));
-  return `Phantombass erkennt ${r.f0.toFixed(1).replace('.', ',')} Hz und fügt Obertöne bei ${hs.join(', ')} Hz hinzu. Daraus hört dein Ohr den tiefen Ton.`;
+  const cut = r ? r.cutoff : params().cutoff;
+  if (f > cut) return `Diesen Ton spielt dein Lautsprecher selbst (über ${cut} Hz).`;
+  // The saturation adds odd harmonics; what lands between the limit and three times it is heard.
+  const hs = [];
+  for (let k = 3; k <= 15 && hs.length < 3; k += 2) if (k * f >= cut && k * f < 3 * cut) hs.push(Math.round(k * f));
+  return hs.length ? `Phantombass ergänzt Obertöne bei ${hs.join(', ')} Hz, knapp über der Grenze deines Lautsprechers (${cut} Hz). Daraus hört dein Ohr den tiefen Ton.`
+    : `Phantombass macht den Bereich knapp über ${cut} Hz kräftiger. Daraus hört dein Ohr den tiefen Ton.`;
 }
 (function toneTick() {
   if (tone.osc) {
