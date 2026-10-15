@@ -306,10 +306,13 @@ class VirtualBass {
   update() {
     const sr = this.sr, fc = this.p.cutoff, Q = Math.SQRT1_2;
     for (const f of [...this.dryL, ...this.dryR, ...this.harmHp]) f.set(sr, fc, Q, true);
-    for (const f of this.bassLp) f.set(sr, fc, Q, false);
+    // Only deep bass becomes harmonics, even when the speaker stops higher (laptops 200-300 Hz):
+    // above ~120 Hz sit voices and guitars, whose harmonics would drone at 300-900 Hz.
+    const src = Math.min(fc, 120);
+    for (const f of this.bassLp) f.set(sr, src, Q, false);
     this.subsonic.set(sr, Math.min(18, 0.6 * fc), Q, true);
     for (const f of this.harmLp) f.set(sr, Math.min(fc * 3, sr * 0.45), Q, false);
-    this.tracker.setRange(20, fc);
+    this.tracker.setRange(20, src);
   }
   // Harmonic k*f0: fades in just below the cutoff, falls off upwards (steeper when warm), gone by 3 fc.
   updateGains() {
@@ -349,7 +352,14 @@ class VirtualBass {
       let h = 0;
       if (this.env > 1e-6) {
         const x = Math.max(-1, Math.min(1, bass / this.env)), x2 = x * x;
-        h = this.env * (this.h2 * (2 * x2 - 1) + this.h3 * x * (4 * x2 - 3) + this.h4 * (8 * x2 * x2 - 8 * x2 + 1));
+        const t3 = x * (4 * x2 - 3), t4 = 8 * x2 * x2 - 8 * x2 + 1;
+        let sum = this.h2 * (2 * x2 - 1) + this.h3 * t3 + this.h4 * t4;
+        if (p.cutoff > 180) {
+          // A speaker that stops high only hears higher harmonics of deep bass: T5..T8.
+          let prev = t3, cur = t4;
+          for (let k = 5; k <= 8; k++) { const next = 2 * x * cur - prev; prev = cur; cur = next; sum += (0.6 / k) * cur; }
+        }
+        h = this.env * sum;
       }
       // Hybrid: crossfade to clean synthesised harmonics while the bass has a clear pitch.
       if (p.pitchTracking) {
