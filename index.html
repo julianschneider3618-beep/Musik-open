@@ -103,6 +103,14 @@ button:focus-visible, .filebtn:focus-within, input:focus-visible { outline: 2px 
 .bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
 .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }
 .status { margin: 0; font-size: 13px; color: var(--muted); }
+.tone h2 { font-family: var(--font-display); font-weight: 600; font-size: 20px; margin: 0 0 6px; }
+.tone p { margin: 0; color: var(--muted); font-size: 14px; }
+.readout { display: flex; align-items: baseline; gap: 8px; font-family: var(--font-mono); }
+.readout span { font-size: clamp(48px, 16vw, 72px); font-weight: 500; line-height: 1; font-variant-numeric: tabular-nums; }
+.readout small { font-size: 18px; color: var(--muted); }
+.tone-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+#toneHold[aria-pressed="true"], #toneBass[aria-pressed="true"] { border-color: var(--accent); }
+.tone .status { font-size: 14px; }
 .error { color: var(--accent); font-weight: 600; }
 .drop-active .card { outline: 2px dashed var(--accent); outline-offset: 4px; }
 .about { display: grid; gap: 8px; color: var(--muted); }
@@ -171,6 +179,20 @@ button:focus-visible, .filebtn:focus-within, input:focus-visible { outline: 2px 
     </ul>
   </section>
 
+  <section class="card tone" aria-label="Testton">
+    <div>
+      <h2>Testton 20 bis 40 Hz</h2>
+      <p>Ein reiner tiefer Ton gleitet langsam von 20 bis 40 Hz und zurück. Die meisten Lautsprecher spielen ihn kaum. Schalte Phantombass aus und an: Ohne hörst du fast nichts, mit hörst du einen tiefen Ton, der mitwandert.</p>
+    </div>
+    <div class="readout" aria-live="off"><span id="toneHz">–</span><small>Hz</small></div>
+    <div class="tone-actions">
+      <button id="toneBtn">Testton starten</button>
+      <button id="toneHold" aria-pressed="false" disabled>Ton anhalten</button>
+      <button id="toneBass" aria-pressed="true">Phantombass: an</button>
+    </div>
+    <p class="status" id="toneInfo">Der Ton läuft durch dieselben Schalter wie die Musik.</p>
+  </section>
+
   <section class="about">
     <h2>Was passiert</h2>
     <p><b>Phantombass:</b> Kleine Lautsprecher können tiefe Töne kaum abspielen. Wenn ein Song echten tiefen Bass hat, fügt Phantombass leise dessen Obertöne hinzu, daraus ergänzt das Ohr den tiefen Ton. Songs ohne tiefen Bass bekommen nichts dazu.</p>
@@ -204,17 +226,17 @@ class Biquad {
 class PitchTracker {
   constructor(sr) {
     this.dec = Math.max(1, Math.round(sr / 3000)); this.rate = sr / this.dec;
-    this.win = Math.ceil(0.05 * this.rate); this.lagCap = Math.ceil(this.rate / 25);
+    this.win = Math.ceil(0.05 * this.rate); this.lagCap = Math.ceil(this.rate / 20);
     this.hop = Math.max(1, Math.ceil(0.01 * this.rate));
     let size = 1; while (size < this.win + this.lagCap + 1) size <<= 1;
     this.ring = new Float32Array(size); this.mask = size - 1;
     this.frame = new Float32Array(this.win + this.lagCap + 1); this.diff = new Float32Array(this.lagCap + 1);
     this.pos = 0; this.dc = 0; this.hc = 0; this.voiced = false; this.freq = 0; this.aper = 1;
-    this.setRange(25, 250);
+    this.setRange(20, 250);
   }
   setRange(minHz, maxHz) {
     this.minLag = Math.max(2, Math.floor(this.rate / Math.max(maxHz, minHz + 1)));
-    this.maxLag = Math.min(this.lagCap, Math.ceil(this.rate / Math.max(minHz, 25)));
+    this.maxLag = Math.min(this.lagCap, Math.ceil(this.rate / Math.max(minHz, 20)));
   }
   push(x) {
     if (++this.dc < this.dec) return;
@@ -279,9 +301,9 @@ class VirtualBass {
     const sr = this.sr, fc = this.p.cutoff, Q = Math.SQRT1_2;
     for (const f of [...this.dryL, ...this.dryR, ...this.harmHp]) f.set(sr, fc, Q, true);
     for (const f of this.bassLp) f.set(sr, fc, Q, false);
-    this.subsonic.set(sr, Math.min(25, 0.6 * fc), Q, true);
+    this.subsonic.set(sr, Math.min(18, 0.6 * fc), Q, true);
     for (const f of this.harmLp) f.set(sr, Math.min(fc * 3, sr * 0.45), Q, false);
-    this.tracker.setRange(25, fc);
+    this.tracker.setRange(20, fc);
   }
   // Harmonic k*f0: fades in just below the cutoff, falls off upwards (steeper when warm), gone by 3 fc.
   updateGains() {
@@ -599,6 +621,10 @@ class Enhancer {
     if (q.cutoff) vbp.cutoff = q.cutoff;
     this.vb.setParams(vbp);
   }
+  report() {
+    const vb = this.vb;
+    return { f0: vb.conf > 0.3 ? vb.f0 : 0, presence: vb.presence, active: !!this.p.bass, cutoff: vb.p.cutoff };
+  }
   process(L, R, n) {
     const m = this.m, t = this.t, sm = this.sm;
     for (let i = 0; i < n; i++) {
@@ -857,7 +883,7 @@ class SpeakerCheck {
 // ---- Player ----
 const WORKLET_SRC = [Biquad, PitchTracker, VirtualBass, peakCoefs, highShelfCoefs, bandCoefs, Enhancer].map(f => f.toString()).join('\n') + `
 class EnhProcessor extends AudioWorkletProcessor {
-  constructor() { super(); this.e = new Enhancer(sampleRate); this.port.onmessage = e => this.e.setParams(e.data); }
+  constructor() { super(); this.e = new Enhancer(sampleRate); this.n = 0; this.port.onmessage = e => this.e.setParams(e.data); }
   process(inputs, outputs) {
     const inp = inputs[0], out = outputs[0];
     if (!inp.length) return true;
@@ -865,6 +891,8 @@ class EnhProcessor extends AudioWorkletProcessor {
     L.set(inp[0]);
     if (R) R.set(inp[1] || inp[0]);
     this.e.process(L, R || null, L.length);
+    // Ten times a second: what Phantombass hears and adds (for the test tone readout).
+    if ((this.n += L.length) >= sampleRate / 10) { this.n = 0; this.port.postMessage(this.e.report()); }
     return true;
   }
 }
@@ -905,6 +933,7 @@ async function ensureAudio() {
     const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: 'application/javascript' }));
     await ctx.audioWorklet.addModule(url);
     state.node = new AudioWorkletNode(ctx, 'phantombass', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
+    state.node.port.onmessage = e => { state.report = e.data; };
   } catch (e) {
     // Fallback for browsers or frames that refuse worklets.
     const sp = ctx.createScriptProcessor(1024, 2, 2), en = new Enhancer(ctx.sampleRate);
@@ -975,6 +1004,8 @@ function renderSwitches() {
     b.disabled = !usable;
     b.classList.toggle('dim', !prefs.all);
   }
+  $('toneBass').setAttribute('aria-pressed', String(on('bass')));
+  $('toneBass').textContent = on('bass') ? 'Phantombass: an' : 'Phantombass: aus';
 }
 $('toggle').addEventListener('click', () => { prefs.all = !prefs.all; save(); renderSwitches(); pushParams(); });
 for (const key of FEATURES) {
@@ -1133,6 +1164,61 @@ $('measureBtn').addEventListener('click', async () => {
     text.textContent = 'Fertig. Die Korrektur ist eingeschaltet.' + (r.latencySeconds > 0.1 ? ` Verzögerung ${Math.round(r.latencySeconds * 1000)} ms, wahrscheinlich Bluetooth.` : '');
   }, 200);
 });
+
+// ---- Test tone: a pure sine gliding 20 -> 40 -> 20 Hz (log scale, 20 s round trip) ----
+const tone = { osc: null, gain: null, t: 0, last: 0, hold: false };
+const toneFreq = t => { const ph = (t % 20) / 10, x = ph < 1 ? ph : 2 - ph; return 20 * Math.pow(2, x); };
+function stopTone() {
+  if (!tone.osc) return;
+  const { osc, gain } = tone, now = state.ctx.currentTime;
+  gain.gain.setTargetAtTime(0, now, 0.03); osc.stop(now + 0.2);
+  tone.osc = null; tone.gain = null;
+  $('toneBtn').textContent = 'Testton starten'; $('toneHold').disabled = true;
+  $('toneHz').textContent = '–'; $('toneInfo').textContent = 'Der Ton läuft durch dieselben Schalter wie die Musik.';
+}
+$('toneBtn').addEventListener('click', async () => {
+  await ensureAudio();
+  if (state.ctx.state === 'suspended') await state.ctx.resume();
+  if (tone.osc) { stopTone(); return; }
+  if (state.playing) { pause(); $('status').textContent = 'Pausiert.'; }
+  const ctx = state.ctx, osc = ctx.createOscillator(), gain = ctx.createGain();
+  tone.t = 0; tone.last = performance.now();
+  osc.frequency.value = toneFreq(0); gain.gain.value = 0;
+  gain.gain.setTargetAtTime(0.4, ctx.currentTime, 0.03);
+  osc.connect(gain); gain.connect(state.node); osc.start();
+  tone.osc = osc; tone.gain = gain;
+  $('toneBtn').textContent = 'Testton stoppen'; $('toneHold').disabled = false;
+});
+$('toneBass').addEventListener('click', () => {
+  if (on('bass')) prefs.bass = false; else { prefs.bass = true; prefs.all = true; }
+  save(); renderSwitches(); pushParams();
+});
+$('toneHold').addEventListener('click', () => {
+  tone.hold = !tone.hold;
+  $('toneHold').setAttribute('aria-pressed', String(tone.hold));
+  $('toneHold').textContent = tone.hold ? 'Weiter gleiten' : 'Ton anhalten';
+});
+function toneInfo() {
+  const r = state.fallback ? state.fallback.report() : state.report;
+  if (!on('bass')) return 'Phantombass ist aus. Du hörst nur den reinen Ton, so wie ihn dein Lautsprecher schafft.';
+  if (!r || !r.f0) return 'Phantombass sucht den Ton …';
+  const cut = r.cutoff, hs = [];
+  for (let k = 2; k <= 16 && hs.length < 4; k++) if (k * r.f0 >= 0.85 * cut && k * r.f0 < 3 * cut) hs.push(Math.round(k * r.f0));
+  return `Phantombass erkennt ${r.f0.toFixed(1).replace('.', ',')} Hz und fügt Obertöne bei ${hs.join(', ')} Hz hinzu. Daraus hört dein Ohr den tiefen Ton.`;
+}
+(function toneTick() {
+  if (tone.osc) {
+    const now = performance.now();
+    if (!tone.hold) tone.t += (now - tone.last) / 1000;
+    tone.last = now;
+    const f = toneFreq(tone.t);
+    tone.osc.frequency.setTargetAtTime(f, state.ctx.currentTime, 0.02);
+    $('toneHz').textContent = f.toFixed(1).replace('.', ',');
+    $('toneInfo').textContent = toneInfo();
+  }
+  requestAnimationFrame(toneTick);
+})();
+$('play').addEventListener('click', () => { if (tone.osc) stopTone(); }, true);
 
 renderSwitches(); renderSpeakerNote();
 setNote('bass', 'Obertöne lassen tiefe Töne auch auf kleinen Lautsprechern hörbar werden.');
