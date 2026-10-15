@@ -111,6 +111,8 @@ button:focus-visible, .filebtn:focus-within, input:focus-visible { outline: 2px 
 .tone-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 #toneHold[aria-pressed="true"], #toneBass[aria-pressed="true"] { border-color: var(--accent); }
 .tone .status { font-size: 14px; }
+.limit { display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 14px; }
+.limit p { color: var(--ink); }
 .error { color: var(--accent); font-weight: 600; }
 .drop-active .card { outline: 2px dashed var(--accent); outline-offset: 4px; }
 .about { display: grid; gap: 8px; color: var(--muted); }
@@ -191,6 +193,10 @@ button:focus-visible, .filebtn:focus-within, input:focus-visible { outline: 2px 
       <button id="toneBass" aria-pressed="true">Phantombass: an</button>
     </div>
     <p class="status" id="toneInfo">Der Ton läuft durch dieselben Schalter wie die Musik.</p>
+    <div class="limit">
+      <p id="toneLimit"></p>
+      <button class="small" id="toneMeasure">Lautsprecher messen</button>
+    </div>
   </section>
 
   <section class="about">
@@ -771,12 +777,12 @@ function loudnessGain(info) {
 }
 
 // ---- Speaker correction: measure the speaker once with the microphone ----
-// Third-octave bands of noise, 50 Hz - 12.5 kHz, one after another, over a constant 1 kHz
+// Third-octave bands of noise, 31.5 Hz - 12.5 kHz, one after another, over a constant 1 kHz
 // reference tone. Every band is read relative to the reference in the same window, so the
 // microphone's auto gain and the playback volume cancel out. Noise (not tones) averages out
 // room echoes. The result: the speaker's response, its lowest usable frequency (which becomes
 // Phantombass's cut-off) and a gentle correction (cuts up to 6 dB, boosts up to 3 dB).
-const SPK_CENTERS = [50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6300, 8000, 10000, 12500];
+const SPK_CENTERS = [31.5, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6300, 8000, 10000, 12500];
 class SpeakerCheck {
   constructor(sr) {
     this.sr = sr; this.refHz = 1000; this.preroll = 1.0; this.step = 0.5; this.maxLatency = 0.4;
@@ -916,7 +922,7 @@ const on = key => prefs.all && prefs[key] && (key !== 'spk' || !!speaker);
 
 function params() {
   return { bass: on('bass'), bal: on('bal'), spk: on('spk'), loud: on('loud'), width: on('width'),
-    gainDb: state.song.gainDb, cutoff: speaker ? Math.max(40, Math.min(200, Math.round(speaker.cutoffHz))) : 120 };
+    gainDb: state.song.gainDb, cutoff: speaker ? Math.max(30, Math.min(300, Math.round(speaker.cutoffHz))) : 120 };
 }
 function pushParams(extra) {
   if (!state.ctx) return;
@@ -1111,7 +1117,20 @@ function stopMeasure() {
   if (meas.proc) { meas.proc.disconnect(); meas.proc = null; }
   if (meas.stream) { meas.stream.getTracks().forEach(t => t.stop()); meas.stream = null; }
 }
+function renderLimit() {
+  const cut = params().cutoff;
+  $('toneLimit').textContent = speaker
+    ? `Phantombass setzt bei ${cut} Hz an, gemessen an deinem Lautsprecher. Tiefere Töne bekommen Obertöne, die dein Lautsprecher spielen kann.`
+    : `Phantombass setzt noch bei ${cut} Hz an, das passt zu kleinen Lautsprechern. Eine große Box wie die Soundbox spielt viel tiefer: miss sie einmal, dann setzt Phantombass genau an ihrer Grenze an und nutzt die tiefsten Obertöne, die sie schafft.`;
+  $('toneMeasure').textContent = speaker ? 'Neu messen' : 'Lautsprecher messen';
+}
+$('toneMeasure').addEventListener('click', () => {
+  if (tone.osc) stopTone();
+  $('measureBtn').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  $('measureBtn').click();
+});
 function renderSpeakerNote() {
+  renderLimit();
   setNote('spk', speaker
     ? `Gemessen: dein Lautsprecher spielt ab etwa ${Math.round(speaker.cutoffHz)} Hz. Phantombass setzt dort an, Höhen und Mitten sind ausgeglichen.`
     : 'Noch nicht gemessen. Einmal messen, dann passt sich der Klang an deinen Lautsprecher an.');
@@ -1198,9 +1217,10 @@ $('toneHold').addEventListener('click', () => {
   $('toneHold').setAttribute('aria-pressed', String(tone.hold));
   $('toneHold').textContent = tone.hold ? 'Weiter gleiten' : 'Ton anhalten';
 });
-function toneInfo() {
+function toneInfo(f) {
   const r = state.fallback ? state.fallback.report() : state.report;
   if (!on('bass')) return 'Phantombass ist aus. Du hörst nur den reinen Ton, so wie ihn dein Lautsprecher schafft.';
+  if (r && f > r.cutoff) return `Diesen Ton spielt dein Lautsprecher selbst (über ${r.cutoff} Hz). Phantombass fügt nichts hinzu.`;
   if (!r || !r.f0) return 'Phantombass sucht den Ton …';
   const cut = r.cutoff, hs = [];
   for (let k = 2; k <= 16 && hs.length < 4; k++) if (k * r.f0 >= 0.85 * cut && k * r.f0 < 3 * cut) hs.push(Math.round(k * r.f0));
@@ -1214,7 +1234,7 @@ function toneInfo() {
     const f = toneFreq(tone.t);
     tone.osc.frequency.setTargetAtTime(f, state.ctx.currentTime, 0.02);
     $('toneHz').textContent = f.toFixed(1).replace('.', ',');
-    $('toneInfo').textContent = toneInfo();
+    $('toneInfo').textContent = toneInfo(f);
   }
   requestAnimationFrame(toneTick);
 })();
